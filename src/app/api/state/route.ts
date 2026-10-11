@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { load, DEMO_USER_ID, getOrCreateUser } from "@/lib/db";
+import { load, getOrCreateUser } from "@/lib/db";
+import { currentUserId } from "@/lib/session";
 import { approvalUrl } from "@/lib/execution";
 import { getPortfolioSummary } from "@/lib/risk";
 import { llmEnabled } from "@/lib/llm";
@@ -10,8 +11,9 @@ import { bbEnabled } from "@/lib/bluebubbles";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-  const userId = new URL(req.url).searchParams.get("userId") || DEMO_USER_ID;
+export async function GET() {
+  // Identity comes only from the signed session cookie (demo user when signed out); no ?userId= override.
+  const userId = await currentUserId();
   const user = getOrCreateUser({ id: userId });
   const db = load();
   const mine = <T extends { userId?: string }>(xs: T[]) => xs.filter((x) => x.userId === userId);

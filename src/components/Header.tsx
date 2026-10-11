@@ -2,6 +2,29 @@
 import type { DashState } from "./state";
 import { Badge, Button, Stat, pnlClass, signedUsd, usd } from "./ui";
 
+const DEMO_USER_ID = "user_demo";
+
+function Account({ s }: { s: DashState }) {
+  if (s.user.id === DEMO_USER_ID) {
+    return (
+      <span className="text-xs text-stone-500">
+        Demo user ·{" "}
+        <a href="/login" className="text-indigo-600 hover:underline">Sign in</a>
+      </span>
+    );
+  }
+  const signOut = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    window.location.reload();
+  };
+  return (
+    <span className="text-xs text-stone-500">
+      Signed in as <span className="font-medium text-stone-700">{s.user.name || s.user.handle || s.user.id}</span> ·{" "}
+      <button onClick={signOut} className="text-indigo-600 hover:underline">Sign out</button>
+    </span>
+  );
+}
+
 export function Header({ s, onTogglePause, busy }: { s: DashState; onTogglePause: () => void; busy: boolean }) {
   const p = s.portfolio;
   const pnl = p.unrealizedPnlUsd + p.realizedPnlUsd;
@@ -17,6 +40,7 @@ export function Header({ s, onTogglePause, busy }: { s: DashState; onTogglePause
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <Account s={s} />
           {s.user.paused && <Badge tone="warn">Paused: no orders will be placed</Badge>}
           <Button variant={s.user.paused ? "primary" : "danger"} onClick={onTogglePause} disabled={busy}>
             {s.user.paused ? "Resume trading" : "Pause all trading"}

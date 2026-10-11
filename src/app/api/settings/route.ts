@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { tx, audit, DEMO_USER_ID, getOrCreateUser } from "@/lib/db";
+import { tx, audit, load, getOrCreateUser } from "@/lib/db";
+import { currentUserId } from "@/lib/session";
+import { normalizeHandle } from "@/lib/auth";
 import type { RiskLimits } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -7,9 +9,15 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
-    userId?: string; limits?: Partial<RiskLimits>; paused?: boolean; name?: string; handle?: string;
+    limits?: Partial<RiskLimits>; paused?: boolean; name?: string; handle?: string;
   };
-  const userId = body.userId || DEMO_USER_ID;
+  // Identity comes from the session only; body.userId is ignored.
+  const userId = await currentUserId();
+  if (typeof body.handle === "string" && body.handle.trim()) {
+    const want = normalizeHandle(body.handle);
+    const taken = load().users.some((u) => u.id !== userId && u.handle && normalizeHandle(u.handle) === want);
+    if (taken) return NextResponse.json({ error: "That handle is already linked to another account." }, { status: 409 });
+  }
   getOrCreateUser({ id: userId });
   const user = tx((db) => {
     const u = db.users.find((x) => x.id === userId)!;

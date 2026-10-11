@@ -5,7 +5,8 @@ import { approvalUrl } from "../execution";
 import { getPortfolioSummary } from "../risk";
 import { updateProfileFromMessage } from "./profile";
 import { discover, formatProposal } from "./discover";
-import type { TradeProposal } from "../types";
+import { createLoginLink } from "../auth";
+import type { TradeProposal, UserThesis } from "../types";
 
 type Intent = "profile" | "discover" | "question" | "approve" | "reject" | "portfolio" | "pause" | "resume" | "smalltalk";
 
@@ -32,6 +33,68 @@ function heuristicIntent(t: string): Intent {
   if (/\b(why|what would|how come|explain|change your mind|evidence|sources?)\b|\?$/.test(s)) return "question";
   if (/\$\s?\d|\b(follow|interested|i think|i believe|conservative|aggressive|balanced|budget|exclude|stop looking|avoid|my name)\b/.test(s)) return "profile";
   return "smalltalk";
+}
+
+/** Account/meta intents handled deterministically before LLM classification (they mint links, so never guess). */
+type MetaIntent =
+  | { kind: "connect"; provider: "notion" | "slack" | "gmail" }
+  | { kind: "gemini" }
+  | { kind: "hedge" }
+  | { kind: "sources" }
+  | { kind: "dashboard" };
+
+function metaIntent(t: string): MetaIntent | undefined {
+  const s = t.toLowerCase();
+  const conn = s.match(/\b(?:connect|link|hook up|add)\s+(?:my\s+)?(notion|slack|gmail)\b/);
+  if (conn) return { kind: "connect", provider: conn[1] as "notion" | "slack" | "gmail" };
+  if (/\b(?:connect|link)\s+(?:my\s+)?gemini\b/.test(s)) return { kind: "gemini" };
+  if (/\bhedge\b/.test(s)) return { kind: "hedge" };
+  if (/\bwhat do you know about me\b|\bmy (?:data )?sources\b|\bwhere did you (?:get|learn)\b/.test(s)) return { kind: "sources" };
+  if (/\b(dashboard|log ?in|sign ?in)\b/.test(s)) return { kind: "dashboard" };
+  return undefined;
+}
+
+const SOURCE_LABEL: Record<UserThesis["source"], string> = {
+  chat: "From our chats", imessage: "From our chats", manual: "Added on the dashboard",
+  notion: "From Notion", slack: "From Slack", gmail: "From Gmail", discord: "From Discord",
+};
+
+function sourcesText(userId: string): string {
+  const db = load();
+  const theses = db.theses.filter((t) => t.userId === userId);
+  if (!theses.length) return "I don't know much about you yet — tell me topics you follow or beliefs you hold and I'll remember them.";
+  const groups = new Map<string, UserThesis[]>();
+  for (const t of theses) {
+    const label = SOURCE_LABEL[t.source] ?? t.source;
+    groups.set(label, [...(groups.get(label) ?? []), t]);
+  }
+  const lines = ["Here's what I know about you:"];
+  for (const [label, ts] of groups) {
+    lines.push(`${label}:`);
+    for (const t of ts.slice(0, 8)) lines.push(`• ${t.topic}${t.belief ? `: ${t.belief}` : ""}`);
+    if (ts.length > 8) lines.push(`• ...and ${ts.length - 8} more`);
+  }
+  const connected = db.connectedSources.filter((c) => c.userId === userId && c.status === "connected");
+  if (connected.length) lines.push(`Connected sources: ${connected.map((c) => c.provider + (c.accountLabel ? ` (${c.accountLabel})` : "")).join(", ")}.`);
+  lines.push(`You can disconnect any source (and drop what it taught me) on your dashboard: ${createLoginLink(userId)}`);
+  return lines.join("\n");
+}
+
+function metaReply(userId: string, m: MetaIntent): string {
+  switch (m.kind) {
+    case "dashboard":
+      return `Here's your private dashboard link (expires in 15 min, works once): ${createLoginLink(userId)}`;
+    case "connect": {
+      const name = m.provider === "gmail" ? "Gmail" : m.provider[0].toUpperCase() + m.provider.slice(1);
+      return `Connecting ${name} is optional — I only read it as context for your interests (never as trade instructions), and you can revoke it anytime from the dashboard.\nConnect here (expires in 15 min): ${createLoginLink(userId, `/api/connect/${m.provider}/start`)}`;
+    }
+    case "gemini":
+      return `Link your Gemini account here (expires in 15 min). I'll still ask you to approve every order: ${createLoginLink(userId, "/api/gemini-oauth/start")}`;
+    case "hedge":
+      return `Hedge ideas for your open positions are on the Risk panel of your dashboard (expires in 15 min): ${createLoginLink(userId)}\nNothing is placed without your approval.`;
+    case "sources":
+      return sourcesText(userId);
+  }
 }
 
 async function classify(text: string): Promise<Intent> {
@@ -144,6 +207,12 @@ export async function handleMessage(userId: string, text: string, channel: "imes
   if (!user) return "Sorry, I couldn't find your account.";
   const priorUserMsgs = db.messages.filter((m) => m.userId === userId && m.role === "user").length;
   audit({ userId, actor: "user", action: "chat.message", detail: { channel, text } });
+
+  const meta = metaIntent(text);
+  if (meta) {
+    audit({ userId, actor: "agent", action: `chat.${meta.kind}`, detail: meta });
+    return metaReply(userId, meta);
+  }
 
   const intent = await classify(text);
 
