@@ -31,7 +31,7 @@ const agent = {
       first_message: cfg.first_message,
       language: "en",
       // Defaults for calls that don't set them (inbound, call links); settlement calls fill call_reason/call_opener/result_summary.
-      dynamic_variables: { dynamic_variable_placeholders: { call_token: "", proposal_id: "", greeting: VOICE_GREETING_PLACEHOLDER, call_reason: "", call_opener: "", result_summary: "" } },
+      dynamic_variables: { dynamic_variable_placeholders: { call_token: "none", proposal_id: "none", greeting: VOICE_GREETING_PLACEHOLDER, call_reason: "none", call_opener: "none", result_summary: "none" } },
       prompt: {
         prompt: cfg.system_prompt, llm: process.env.ELEVENLABS_AGENT_LLM || "gpt-4.1", temperature: 0.6, tool_ids: toolIds,
         // Hang up when done, and on a voicemail greeting, so unanswered rings don't burn minutes.

@@ -65,7 +65,7 @@ export async function callContext(userId: string, proposalId?: string): Promise<
 export async function ringUser(userId: string, proposalId?: string): Promise<boolean> {
   // main: open with the pitch via the {{greeting}} variable.
   const { greeting } = await callContext(userId, proposalId);
-  return (await placeCall(userId, { proposal_id: proposalId ?? "", greeting })).ok;
+  return (await placeCall(userId, { proposal_id: proposalId ?? "none", greeting })).ok;
 }
 
 /** Why we're calling about a settled position: the result, the line to open with, and a one-line summary for the agent. */
@@ -83,20 +83,24 @@ export async function canRing(userId: string): Promise<boolean> {
  * If the live agent doesn't allow the first-message override, retry without it: the briefing "say" line carries the opener.
  */
 export async function ringUserAbout(userId: string, about: CallAbout): Promise<boolean> {
-  const vars = { proposal_id: "", greeting: about.opener, call_reason: `settlement_${about.kind}`, call_opener: about.opener, result_summary: about.summary };
+  const vars = { proposal_id: "none", greeting: about.opener, call_reason: `settlement_${about.kind}`, call_opener: about.opener, result_summary: about.summary };
   const first = await placeCall(userId, vars, about.opener);
   if (first.ok || !/override/i.test(first.message ?? "")) return first.ok;
   return (await placeCall(userId, vars)).ok;
 }
 
 /** The exact body POSTed to ElevenLabs' Twilio outbound-call endpoint (exported so tests can show it without dialing). */
+/** Defaults for variables only settlement calls set; "none" (not "") so ElevenLabs counts them as provided. */
+export const CALL_VAR_DEFAULTS = { proposal_id: "none", call_reason: "none", call_opener: "none", result_summary: "none" };
+
 export function outboundCallPayload(userId: string, to: string, vars: Record<string, string>, firstMessage?: string) {
   return {
     agent_id: process.env.ELEVENLABS_AGENT_ID,
     agent_phone_number_id: process.env.ELEVENLABS_PHONE_NUMBER_ID,
     to_number: to,
     conversation_initiation_client_data: {
-      dynamic_variables: { call_token: callToken(userId), ...vars },
+      // Every tool-referenced variable must be present or ElevenLabs rejects the call ("Missing required dynamic variables").
+      dynamic_variables: { call_token: callToken(userId), ...CALL_VAR_DEFAULTS, ...vars },
       ...(firstMessage ? { conversation_config_override: { agent: { first_message: firstMessage } } } : {}),
     },
   };
