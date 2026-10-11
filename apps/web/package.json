@@ -1,0 +1,40 @@
+{
+  "name": "@mayflower/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@mayflower/agents": "0.1.0",
+    "@mayflower/context": "0.1.0",
+    "@mayflower/gemini-markets": "0.1.0",
+    "@mayflower/risk": "0.1.0",
+    "@mayflower/shared": "0.1.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.4",
+    "jose": "^6.1.0",
+    "lucide-react": "^1.55.0",
+    "next": "^16.4.0",
+    "postgres": "^3.4.7",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "recharts": "^3.2.0",
+    "tailwind-merge": "^3.3.1",
+    "ws": "^8.18.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/ws": "^8.18.1",
+    "tailwindcss": "^4.1.0"
+  }
+}

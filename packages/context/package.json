@@ -1,0 +1,13 @@
+{
+  "name": "@mayflower/context",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "context.dev": "3.5.0",
+    "@mayflower/shared": "0.1.0"
+  }
+}
