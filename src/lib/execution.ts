@@ -5,6 +5,7 @@ import type { Order, Position, TradeProposal } from "./types";
 import { placeOrder, getOrderStatus } from "./exchange";
 import { sendToUser } from "./notify";
 import { exitLevels } from "./risk";
+import { onApproved } from "./receipts";
 
 const APP_URL = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
@@ -164,6 +165,7 @@ export async function approveAndExecute(
   }
   const p = pre.proposal as TradeProposal;
   audit({ userId: p.userId, actor: "user", action: "approve", ref: p.id, detail: { side: p.side, quantity: p.quantity, limitPrice: p.limitPrice } });
+  void onApproved(p.id); // YZi: hash of this exact approval committed to BNB testnet (no-op if not configured)
   if (pre.firstLink) audit({ userId: p.userId, actor: "system", action: "gemini_linked", detail: { account: "Sandbox – shared account" } });
 
   // "hedge" is a buy of the hedge market (its own position, linked via hedgeForPositionId).

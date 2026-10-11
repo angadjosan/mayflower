@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { load } from "@/lib/db";
-import { currentUserId } from "@/lib/session";
+import { sessionUserId, UNAUTHORIZED } from "@/lib/session";
 import { concentrationReport } from "@/lib/risk";
 import { calibrationSummary } from "@/lib/calibration";
 import { findHedges, noHedgeExplanation, proposeHedge } from "@/lib/hedge";
@@ -12,7 +12,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const userId = await currentUserId();
+  const userId = await sessionUserId();
+  if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
   const open = load().positions.filter((p) => p.userId === userId && p.status === "open");
   const hedges = await Promise.all(
     open.map(async (p) => {
@@ -31,7 +32,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const userId = await currentUserId();
+  const userId = await sessionUserId();
+  if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
   const body = (await req.json().catch(() => ({}))) as { action?: string; positionId?: string; marketId?: string; side?: Side };
   if (body.action !== "hedge" || !body.positionId) return NextResponse.json({ error: "Expected {action:'hedge', positionId}" }, { status: 400 });
   const pos = load().positions.find((p) => p.id === body.positionId);

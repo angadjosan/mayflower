@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { tx, audit, getOrCreateUser } from "@/lib/db";
-import { currentUserId } from "@/lib/session";
+import { sessionUserId, UNAUTHORIZED } from "@/lib/session";
 import { geminiOAuthConfigured } from "@/lib/gemini-oauth";
 
 export const runtime = "nodejs";
@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 // Plan B (default): all users trade through one shared Gemini sandbox account.
 export async function POST() {
   if (geminiOAuthConfigured) return NextResponse.json({ redirect: "/api/gemini-oauth/start" });
-  const userId = await currentUserId();
+  const userId = await sessionUserId();
+  if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
   getOrCreateUser({ id: userId });
   const user = tx((db) => {
     const u = db.users.find((x) => x.id === userId)!;

@@ -39,8 +39,9 @@ export default async function ApprovePage({
   const research = db.research.find((r) => r.id === p.researchId);
   const expired = new Date(p.expiresAt).getTime() < Date.now();
   const simulated = String(exchangeMode) !== "sandbox";
-  const action = p.kind === "open" ? "Buy" : "Sell";
-  const maxLoss = p.kind === "open" ? p.costUsd : 0;
+  const buying = p.kind === "open" || p.kind === "hedge";
+  const action = buying ? "Buy" : "Sell";
+  const maxLoss = buying ? p.costUsd : 0;
 
   const rows: [string, string][] = [
     ["Event", p.market.eventTitle],
@@ -48,7 +49,7 @@ export default async function ApprovePage({
     ["Order", `${action} ${p.quantity} ${p.side} contracts`],
     ["Limit price", `${usd(p.limitPrice)} per contract`],
     ["Total cost", usd(p.costUsd)],
-    ["Max loss", p.kind === "open" ? usd(maxLoss) : "n/a (closing)"],
+    ["Max loss", buying ? usd(maxLoss) : "n/a (closing)"],
     ["Market probability", pct(p.marketProbability)],
     [`Mayflower estimate (${p.side} wins)`, pct(p.estimatedProbability)],
     ["Edge", `${(p.edge * 100).toFixed(1)} pts`],

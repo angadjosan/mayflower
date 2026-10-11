@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { currentUserId } from "@/lib/session";
+import { sessionUserId } from "@/lib/session";
 import { audit } from "@/lib/db";
 import { exchangeCode, geminiOAuthConfigured, saveGeminiToken, STATE_COOKIE, verifyState } from "@/lib/gemini-oauth";
 
@@ -21,7 +21,8 @@ export async function GET(req: Request) {
 
   const nonce = (await cookies()).get(STATE_COOKIE)?.value;
   const state = verifyState(url.searchParams.get("state"), nonce);
-  const userId = await currentUserId();
+  const userId = await sessionUserId();
+  if (!userId) return NextResponse.redirect(new URL("/login", process.env.APP_URL || "http://localhost:3000"));
   if (!state || state.userId !== userId) return home("connect_error=gemini+link+expired+or+invalid");
 
   const code = url.searchParams.get("code");

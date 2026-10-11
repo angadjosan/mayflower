@@ -242,14 +242,15 @@ export async function discover(userId: string, opts?: { focus?: string; max?: nu
 
 export function formatProposal(p: TradeProposal, r?: ResearchReport): string {
   const m = p.market;
-  const label = p.kind === "open" ? "Idea" : p.kind === "close" ? "Suggest closing" : "Suggest reducing";
+  const buying = p.kind === "open" || p.kind === "hedge";
+  const label = p.kind === "open" ? "Idea" : p.kind === "hedge" ? "Hedge idea (partial, not guaranteed)" : p.kind === "close" ? "Suggest closing" : "Suggest reducing";
   const tag = p.discovery === "personalized" ? " (matches your interests)" : p.discovery === "general" ? " (broader market)" : "";
   const mock = (m.source === "mock" ? " (mock data)" : "") + (String(exchangeMode) === "simulated" ? " (simulated)" : "");
   const why = (r?.summary || p.thesis).split(/(?<=\.)\s/).slice(0, 2).join(" ");
   const lines = [
     `${label}${tag}${mock}: ${m.eventTitle}${m.title && m.title !== m.eventTitle ? ` — ${m.title}` : ""}`,
-    `${p.kind === "open" ? "Buy" : "Sell"} ${p.side} @ $${p.limitPrice.toFixed(2)}: market implies ${pct(p.marketProbability)} for ${p.side}, my estimate ${pct(p.estimatedProbability)}${r ? ` (${r.uncertainty} uncertainty)` : ""}.`,
-    p.kind === "open"
+    `${buying ? "Buy" : "Sell"} ${p.side} @ $${p.limitPrice.toFixed(2)}: market implies ${pct(p.marketProbability)} for ${p.side}, my estimate ${pct(p.estimatedProbability)}${r ? ` (${r.uncertainty} uncertainty)` : ""}.`,
+    buying
       ? `Suggested risk: $${p.costUsd.toFixed(2)} (${p.quantity} contracts) — that's the max you'd lose.`
       : `${p.quantity} contracts, about $${p.costUsd.toFixed(2)} at current price.`,
     `Why: ${why}`,

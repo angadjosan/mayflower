@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUserId } from "@/lib/session";
+import { sessionUserId } from "@/lib/session";
 import { connectUrl, isContextProvider, notionInternal, notionInternalConnection, providers, saveConnection, syncSource } from "@/lib/connectors";
 
 export const runtime = "nodejs";
@@ -10,7 +10,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
   const home = (q: string) => NextResponse.redirect(new URL(`/?${q}`, req.url));
   if (!isContextProvider(provider)) return home("connect_error=unknown+provider");
   if (!providers[provider].configured) return home(`connect_error=${provider}+not+configured`);
-  const userId = await currentUserId();
+  const userId = await sessionUserId();
+  if (!userId) return NextResponse.redirect(new URL("/login", process.env.APP_URL || "http://localhost:3000"));
 
   if (provider === "notion" && notionInternal) {
     const src = saveConnection(userId, "notion", notionInternalConnection());

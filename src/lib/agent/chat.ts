@@ -95,7 +95,7 @@ function sourcesText(userId: string): string {
   return lines.join("\n");
 }
 
-function metaReply(userId: string, m: MetaIntent): string {
+async function metaReply(userId: string, m: MetaIntent): Promise<string> {
   switch (m.kind) {
     case "dashboard":
       return `Here's your private dashboard link (expires in 15 min, works once): ${createLoginLink(userId)}`;

@@ -19,7 +19,7 @@ function ProposalCard({ p, onAsk, onReject }: { p: ProposalView; onAsk: (p: Prop
     <div className="rounded-xl border border-stone-200 p-4">
       <div className="flex flex-wrap items-center gap-1.5">
         <Badge tone={d.tone}>{d.label}</Badge>
-        {p.kind !== "open" && <Badge tone="warn">{p.kind === "close" ? "Close position" : "Reduce position"}</Badge>}
+        {p.kind !== "open" && <Badge tone="warn">{p.kind === "close" ? "Close position" : p.kind === "hedge" ? "Hedge (partial)" : "Reduce position"}</Badge>}
         {p.market.source === "mock" && <Badge>Mock market</Badge>}
         {p.market.expiresAt && <span className="text-xs text-stone-400">Expires {new Date(p.market.expiresAt).toLocaleDateString()}</span>}
       </div>
@@ -45,7 +45,7 @@ function ProposalCard({ p, onAsk, onReject }: { p: ProposalView; onAsk: (p: Prop
         </div>
         <div>
           <div className="text-xs text-stone-500">Max loss</div>
-          <div className="font-semibold text-rose-600">{usd(p.kind === "open" ? p.costUsd : 0)}</div>
+          <div className="font-semibold text-rose-600">{usd(p.kind === "open" || p.kind === "hedge" ? p.costUsd : 0)}</div>
           <div className="text-xs text-stone-400">if it expires worthless</div>
         </div>
       </div>

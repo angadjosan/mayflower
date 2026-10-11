@@ -8,6 +8,9 @@ import { Performance } from "@/components/Performance";
 import { Positions } from "@/components/Positions";
 import { Profile } from "@/components/Profile";
 import { Recommendations } from "@/components/Recommendations";
+import Connections from "@/components/Connections";
+import Receipts from "@/components/Receipts";
+import RiskPanel from "@/components/RiskPanel";
 import { post, type DashState, type ProposalView } from "@/components/state";
 
 export default function Dashboard() {
@@ -127,8 +130,21 @@ export default function Dashboard() {
               theses={s.theses}
               busy={busy}
               onSave={(body: { limits: Partial<RiskLimits>; name?: string; handle?: string }) => run(() => post("/api/settings", body), "Settings saved.")}
-              onLinkGemini={() => run(() => post("/api/link-gemini"), "Gemini sandbox linked (shared account).")}
+              onLinkGemini={() =>
+                run(async () => {
+                  // OAuth configured → go to Gemini; otherwise the shared sandbox account is linked (Plan B).
+                  const j = await post<{ redirect?: string }>("/api/link-gemini");
+                  if (j.redirect) window.location.href = j.redirect;
+                }, "Gemini linked.")
+              }
             />
+          </div>
+
+          <RiskPanel />
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <Connections />
+            <Receipts />
           </div>
         </div>
 
