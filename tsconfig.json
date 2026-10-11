@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/shared" },
+    { "path": "packages/risk" },
+    { "path": "packages/context" },
+    { "path": "packages/gemini-markets" },
+    { "path": "packages/messaging" },
+    { "path": "packages/db" },
+    { "path": "packages/agents" }
+  ]
+}

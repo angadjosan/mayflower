@@ -1,0 +1,25 @@
+{
+  "name": "mayflower",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Mayflower — your personal AI hedge fund for prediction markets",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w apps/web",
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run",
+    "typecheck": "tsc -b",
+    "lint": "npm run lint -w apps/web"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
