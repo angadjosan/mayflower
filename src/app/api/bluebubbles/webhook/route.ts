@@ -4,6 +4,7 @@ import { getOrCreateUser } from "@/lib/db";
 import { storeMessage, sendToUser } from "@/lib/notify";
 import { handleMessage } from "@/lib/agent/chat";
 import { punchUp } from "@/lib/punchUp";
+import { isSelfHandle, loopReason } from "@/lib/loopGuard";
 import { handleGroupMessage } from "@/lib/agent/group";
 import { bbEnabled, downloadAttachment, isImageAttachment, isVoiceMemo, sendAttachment, type BBAttachment } from "@/lib/bluebubbles";
 import { prepareSharedImages, storedTextFor } from "@/lib/sharedImages";
@@ -62,6 +63,11 @@ export async function POST(req: Request) {
   if (body.type !== "new-message" || body.data?.isFromMe || (!typed && !voiceIn && !pics.length) || !address || !firstTime(body.data?.guid)) {
     return NextResponse.json({ ok: true, ignored: true });
   }
+  // Texts to our own number/Apple ID come back as incoming; answering them loops forever.
+  if (isSelfHandle(address)) {
+    console.log("[bluebubbles] ignored message from our own handle");
+    return NextResponse.json({ ok: true, ignored: true });
+  }
   if (isGroup && process.env.ALLOW_GROUP_CHATS !== "1") {
     console.log("[bluebubbles] ignored group message (ALLOW_GROUP_CHATS != 1)");
     return NextResponse.json({ ok: true, ignored: true });
@@ -87,6 +93,11 @@ export async function POST(req: Request) {
       return;
     }
     const user = await getOrCreateUser({ handle: address });
+    const loop = loopReason(text, (await load()).messages.filter((m) => m.userId === user.id).slice(-60));
+    if (loop) {
+      console.warn("[bluebubbles] not replying:", loop);
+      return;
+    }
     const shared = pics.length ? await prepareSharedImages(pics) : { images: [], notes: [] };
     const storedText = storedTextFor(text, shared.images.length, shared.notes.length);
     await storeMessage(user.id, "user", storedText, "imessage");
