@@ -22,6 +22,10 @@ export default function Dashboard() {
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/state", { cache: "no-store" });
+      if (res.status === 401) {
+        window.location.href = "/login?next=/";
+        return;
+      }
       if (!res.ok) throw new Error(`Could not load state (${res.status})`);
       setS(await res.json());
       setError(null);

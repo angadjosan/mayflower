@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { load, getOrCreateUser } from "@/lib/db";
-import { currentUserId } from "@/lib/session";
+import { sessionUserId, UNAUTHORIZED } from "@/lib/session";
 import { approvalUrl } from "@/lib/execution";
 import { getPortfolioSummary } from "@/lib/risk";
 import { llmEnabled } from "@/lib/llm";
@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   // Identity comes only from the signed session cookie (demo user when signed out); no ?userId= override.
-  const userId = await currentUserId();
+  const userId = await sessionUserId();
+  if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
   const user = getOrCreateUser({ id: userId });
   const db = load();
   const mine = <T extends { userId?: string }>(xs: T[]) => xs.filter((x) => x.userId === userId);

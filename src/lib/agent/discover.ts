@@ -47,12 +47,17 @@ interface ForecastJSON {
 
 /** Research + forecast + critic for one market; saves the ResearchReport. */
 export async function researchAndForecast(market: Market, userId?: string): Promise<ResearchReport> {
-  let citations: Citation[] = [];
-  let source: ResearchReport["source"] = "mock";
-  try {
-    const r = await searchEvidence(`${market.eventTitle} ${market.title}`.slice(0, 200), 6);
-    citations = r.citations; source = r.source;
-  } catch { /* research unavailable; continue with no citations */ }
+  // Search for supporting and contradicting coverage in parallel so the forecaster sees both sides.
+  const q = `${market.eventTitle} ${market.title}`.slice(0, 180);
+  const [general, counter] = await Promise.all([
+    searchEvidence(q, 4).catch(() => null),
+    searchEvidence(`${q} risks OR doubts OR unlikely`, 3).catch(() => null),
+  ]);
+  const seenUrls = new Set<string>();
+  const citations: Citation[] = [...(general?.citations ?? []), ...(counter?.citations ?? [])]
+    .filter((c) => !seenUrls.has(c.url) && seenUrls.add(c.url))
+    .slice(0, 6);
+  const source: ResearchReport["source"] = general?.source === "context.dev" || counter?.source === "context.dev" ? "context.dev" : "mock";
 
   const m = mid(market);
   let report: Omit<ResearchReport, "id" | "createdAt">;
@@ -83,6 +88,7 @@ Number of sources: ${citations.length}
 
 As a critic, challenge this: resolution-rule ambiguity or mismatch, weak/stale/missing evidence, overconfidence. If warranted, shrink the probability toward the market price. Return JSON {notes (<=2 sentences), adjustedProbability, uncertainty}.`,
         "You are a skeptical critic reviewing a prediction-market forecast. Return ONLY JSON.",
+        { fast: true },
       );
       if (c?.notes) criticNotes = c.notes;
       if (isFinite(Number(c?.adjustedProbability))) p = clamp(Number(c.adjustedProbability));
@@ -131,6 +137,7 @@ async function rankPersonalized(markets: Market[], theses: UserThesis[]): Promis
 Markets:\n${candidates.map((m) => `${m.id} | ${m.eventTitle} — ${m.title}`).join("\n")}
 Return JSON {ids: [up to 4 market ids most relevant to the user's interests, best first]}. Only include genuinely related markets.`,
       "You match users to relevant prediction markets. Return ONLY JSON.",
+      { fast: true },
     );
     const out = (r.ids ?? []).map((i) => candidates.find((m) => m.id === i)).filter(Boolean) as Market[];
     if (out.length) return out;
@@ -183,9 +190,13 @@ export async function discover(userId: string, opts?: { focus?: string; max?: nu
   let availableUsd = Infinity;
   try { availableUsd = (await getBalance()).availableUsd; } catch { /* unknown balance: rely on Mayflower limits */ }
 
+  // Research every pick in parallel (the slow part); sizing below stays sequential so pending exposure adds up.
+  const chosen = picks.slice(0, max);
+  const reports = await Promise.all(chosen.map(({ market }) => researchAndForecast(market, userId)));
+
   const created: TradeProposal[] = [];
-  for (const { market, discovery } of picks.slice(0, max)) {
-    const r = await researchAndForecast(market, userId);
+  for (const [i, { market, discovery }] of chosen.entries()) {
+    const r = reports[i];
     const pYes = r.estimatedProbability;
     const ya = yesAsk(market), na = noAsk(market);
     const side: Side = pYes - ya >= (1 - pYes) - na ? "YES" : "NO";

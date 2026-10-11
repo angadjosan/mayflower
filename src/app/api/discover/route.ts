@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUserId } from "@/lib/session";
+import { sessionUserId, UNAUTHORIZED } from "@/lib/session";
 import { discover } from "@/lib/agent/discover";
 import { sendToUser } from "@/lib/notify";
 import { approvalUrl } from "@/lib/execution";
@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   const { focus } = (await req.json().catch(() => ({}))) as { focus?: string };
-  const userId = await currentUserId();
+  const userId = await sessionUserId();
+  if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
   try {
     const proposals = await discover(userId, { focus: focus || undefined });
     const msg = proposals.length

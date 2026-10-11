@@ -63,7 +63,7 @@ function heuristic(text: string): Extracted {
 export async function updateProfileFromMessage(userId: string, text: string): Promise<{ changed: boolean; summary: string }> {
   let ex: Extracted;
   try {
-    ex = await generateJSON<Extracted>(`Message: """${text}"""`, SYSTEM);
+    ex = await generateJSON<Extracted>(`Message: """${text}"""`, SYSTEM, { fast: true });
     if (!ex || typeof ex !== "object") ex = heuristic(text);
   } catch {
     ex = heuristic(text);

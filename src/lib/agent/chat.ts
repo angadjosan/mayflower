@@ -6,6 +6,8 @@ import { getPortfolioSummary } from "../risk";
 import { updateProfileFromMessage } from "./profile";
 import { discover, formatProposal } from "./discover";
 import { createLoginLink } from "../auth";
+import { proposeHedge } from "../hedge";
+import { sendToUser } from "../notify";
 import type { TradeProposal, UserThesis } from "../types";
 
 type Intent = "profile" | "discover" | "question" | "approve" | "reject" | "portfolio" | "pause" | "resume" | "smalltalk";
@@ -39,7 +41,7 @@ function heuristicIntent(t: string): Intent {
 type MetaIntent =
   | { kind: "connect"; provider: "notion" | "slack" | "gmail" }
   | { kind: "gemini" }
-  | { kind: "hedge" }
+  | { kind: "hedge"; text: string }
   | { kind: "sources" }
   | { kind: "dashboard" };
 
@@ -48,10 +50,23 @@ function metaIntent(t: string): MetaIntent | undefined {
   const conn = s.match(/\b(?:connect|link|hook up|add)\s+(?:my\s+)?(notion|slack|gmail)\b/);
   if (conn) return { kind: "connect", provider: conn[1] as "notion" | "slack" | "gmail" };
   if (/\b(?:connect|link)\s+(?:my\s+)?gemini\b/.test(s)) return { kind: "gemini" };
-  if (/\bhedge\b/.test(s)) return { kind: "hedge" };
+  if (/\bhedg(e|ing)\b/.test(s)) return { kind: "hedge", text: s };
   if (/\bwhat do you know about me\b|\bmy (?:data )?sources\b|\bwhere did you (?:get|learn)\b/.test(s)) return { kind: "sources" };
   if (/\b(dashboard|log ?in|sign ?in)\b/.test(s)) return { kind: "dashboard" };
   return undefined;
+}
+
+/** "hedge my btc" → propose a hedge for the best-matching open position (still needs its own approval). */
+async function hedgeReply(userId: string, text: string): Promise<string> {
+  const open = load().positions.filter((p) => p.userId === userId && p.status === "open");
+  if (!open.length) return "You don't have any open positions to hedge yet.";
+  const words = text.split(/\W+/).filter((w) => w.length > 2 && !/^(hedge|hedging|my|the|position|should|please)$/.test(w));
+  const target =
+    open.find((p) => words.some((w) => `${p.market.eventTitle} ${p.market.title}`.toLowerCase().includes(w))) ??
+    [...open].sort((a, b) => b.costBasisUsd - a.costBasisUsd)[0];
+  const r = await proposeHedge(target.id);
+  if ("error" in r) return r.error;
+  return `${r.message}\nMore hedge ideas are on your dashboard's Risk panel: ${createLoginLink(userId)}`;
 }
 
 const SOURCE_LABEL: Record<UserThesis["source"], string> = {
@@ -91,7 +106,7 @@ function metaReply(userId: string, m: MetaIntent): string {
     case "gemini":
       return `Link your Gemini account here (expires in 15 min). I'll still ask you to approve every order: ${createLoginLink(userId, "/api/gemini-oauth/start")}`;
     case "hedge":
-      return `Hedge ideas for your open positions are on the Risk panel of your dashboard (expires in 15 min): ${createLoginLink(userId)}\nNothing is placed without your approval.`;
+      return hedgeReply(userId, m.text);
     case "sources":
       return sourcesText(userId);
   }
@@ -110,6 +125,7 @@ portfolio (asks about portfolio, positions, P&L, risk, what changed),
 pause (stop all trading), resume (re-enable trading), smalltalk.
 Return JSON {"intent": "..."}.`,
       "You classify chat messages for a prediction-market assistant. Return ONLY JSON.",
+      { fast: true },
     );
     const ok: Intent[] = ["profile", "discover", "question", "approve", "reject", "portfolio", "pause", "resume", "smalltalk"];
     if (ok.includes(r?.intent)) return r.intent;
@@ -140,6 +156,8 @@ function matchProposal(userId: string, text: string): TradeProposal | undefined 
 }
 
 async function proposalsText(userId: string, focus?: string): Promise<string> {
+  // Research takes a little while; say so right away instead of going quiet.
+  await sendToUser(userId, `On it — scanning Gemini markets${focus ? ` for "${focus}"` : ""} and researching the best fits. Give me about 30 seconds.`).catch(() => {});
   const props = await discover(userId, focus ? { focus } : undefined);
   if (!props.length) return "I looked, but didn't find a trade with enough edge to beat fees and uncertainty right now. No trade is a valid answer — I'll keep watching.";
   const db = load();
