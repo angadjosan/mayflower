@@ -27,6 +27,7 @@ export const config = {
     url: env('BLUEBUBBLES_URL'),                    // e.g. https://xyz.ngrok.app
     password: env('BLUEBUBBLES_PASSWORD'),
     webhookSecret: env('WEBHOOK_SECRET') ?? 'dev-secret-change-me',
+    allowedSenders: (env('ALLOWED_SENDERS') ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   },
   elevenlabs: {
     apiKey: env('ELEVENLABS_API_KEY'),

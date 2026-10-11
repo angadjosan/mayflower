@@ -25,7 +25,7 @@ export function createServer(app: App): Hono {
     const body = await c.req.json().catch(() => null);
     const bb = { url: config.bluebubbles.url ?? '', password: config.bluebubbles.password ?? '' };
     // answer fast; BlueBubbles does not retry, and the pipeline can take a while
-    void parseBlueBubblesWebhook(body, bb)
+    void parseBlueBubblesWebhook(body, bb, config.bluebubbles.allowedSenders)
       .then((msg) => msg && enqueueInbound(app, msg))
       .catch((e) => console.error('[webhook]', e));
     return c.json({ ok: true });

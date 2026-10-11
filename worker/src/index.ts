@@ -9,4 +9,7 @@ setInterval(() => app.catalog.refresh().catch((e) => console.error('[catalog]', 
 if (app.ticks) app.ticks.start();
 
 serve({ fetch: createServer(app).fetch, port: config.port });
+if (config.bluebubbles.url && config.bluebubbles.allowedSenders.length === 0) {
+  console.warn('[mayflower] ALLOWED_SENDERS is empty: iMessage texts are ignored (set it, or * for everyone)');
+}
 console.log(`[mayflower] worker on :${config.port} · ${count} contracts ·`, JSON.stringify(await app.modes()));

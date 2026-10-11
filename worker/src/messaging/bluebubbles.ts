@@ -103,7 +103,29 @@ function guessMime(a: BbAttachment): string {
   return 'application/octet-stream';
 }
 
-export async function parseBlueBubblesWebhook(body: unknown, bb: Bb): Promise<InboundMessage | null> {
+// Phones match on digits (so +1 (555) 010-0000 == 5550100000), emails case-insensitively.
+const normHandle = (h: string) => (h.includes('@') ? h.trim().toLowerCase() : h.replace(/\D/g, ''));
+
+/** Fails closed: empty = nobody, `*` = everyone. On a personal Apple ID, `*` answers every friend. */
+export function senderAllowed(from: string, allowed: readonly string[]): boolean {
+  if (allowed.includes('*')) return true;
+  const f = normHandle(from);
+  return allowed.some((a) => {
+    const n = normHandle(a);
+    if (!n || !f) return false;
+    if (n === f) return true;
+    if (from.includes('@') || a.includes('@')) return false;
+    // US numbers with and without the country code; never a looser suffix match (+52 555... != 555...)
+    const [short, long] = n.length < f.length ? [n, f] : [f, n];
+    return short.length === 10 && long === `1${short}`;
+  });
+}
+
+// Group chat guids look like `iMessage;+;chat123`; the bot only talks 1:1
+const inGroupChat = (chats: unknown) =>
+  Array.isArray(chats) && chats.some((c: { guid?: unknown }) => typeof c?.guid === 'string' && c.guid.includes(';+;'));
+
+export async function parseBlueBubblesWebhook(body: unknown, bb: Bb, allowedSenders: readonly string[]): Promise<InboundMessage | null> {
   const evt = body as { type?: string; data?: Record<string, any> } | null;
   if (!evt || evt.type !== 'new-message' || !evt.data) return null;
   const d = evt.data;
@@ -111,6 +133,7 @@ export async function parseBlueBubblesWebhook(body: unknown, bb: Bb): Promise<In
   if (d.associatedMessageType) return null;
   const from: unknown = d.handle?.address;
   if (typeof from !== 'string' || !from) return null;
+  if (!senderAllowed(from, allowedSenders) || inGroupChat(d.chats)) return null;
 
   const text = typeof d.text === 'string' ? d.text : '';
   const att = pickAudio(d.attachments);
