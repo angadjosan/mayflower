@@ -66,7 +66,7 @@ export async function POST(req: Request) {
       reply = await handleMessage(user.id, text, "imessage");
     } catch (e) {
       console.error(e);
-      reply = "oof, something broke on my end 😵‍💫\ngive me a sec and text that again 🙏";
+      reply = "ah something broke on my end\ngive me a sec and send that again";
     }
     await sendToUser(user.id, reply);
   });
