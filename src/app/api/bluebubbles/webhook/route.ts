@@ -22,6 +22,15 @@ function secretOk(given: string | null): boolean {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+// Who the bot answers. The bridge Mac may be signed into a personal Apple ID, so the default is
+// nobody: ALLOWED_SENDERS="*" answers everyone, otherwise a comma list of phones/emails.
+function senderAllowed(address: string): boolean {
+  const raw = (process.env.ALLOWED_SENDERS ?? "").trim();
+  if (raw === "*") return true;
+  const norm = (a: string) => a.trim().toLowerCase().replace(/[^\d+@a-z.]/g, "");
+  return raw.split(",").map(norm).filter(Boolean).includes(norm(address));
+}
+
 // BlueBubbles retries webhooks it thinks failed; skip message guids we've already taken.
 const seen = new Set<string>();
 function firstTime(guid?: string): boolean {
@@ -42,8 +51,13 @@ export async function POST(req: Request) {
   if (body.type !== "new-message" || body.data?.isFromMe || !text || !address || !firstTime(body.data?.guid)) {
     return NextResponse.json({ ok: true, ignored: true });
   }
-  // Research can take a while; acknowledge the webhook now and reply over iMessage when done.
   const chatGuid = body.data?.chats?.[0]?.guid;
+  const isGroup = Boolean(chatGuid?.includes(";+;"));
+  if (!senderAllowed(address) || (isGroup && process.env.ALLOW_GROUP_CHATS !== "1")) {
+    console.log("[bluebubbles] ignored", isGroup ? "group message" : "sender not in ALLOWED_SENDERS");
+    return NextResponse.json({ ok: true, ignored: true });
+  }
+  // Research can take a while; acknowledge the webhook now and reply over iMessage when done.
   after(async () => {
     // Group chats have a ";+;" chat guid; replies go back into the group.
     if (chatGuid?.includes(";+;")) {
@@ -61,7 +75,7 @@ export async function POST(req: Request) {
       reply = await handleMessage(user.id, text, "imessage");
     } catch (e) {
       console.error(e);
-      reply = "Sorry — something went wrong on my end. Try again in a moment.";
+      reply = "oof, something broke on my end 😵‍💫\ngive me a sec and text that again 🙏";
     }
     await sendToUser(user.id, reply);
   });

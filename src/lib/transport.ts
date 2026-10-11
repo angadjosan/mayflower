@@ -1,5 +1,19 @@
 // Outbound transport dispatch: Discord (handles/chat ids prefixed "discord:") or BlueBubbles (iMessage).
 import { bbEnabled, sendIMessage, sendToChat as bbSendToChat } from "./bluebubbles";
+import { BUBBLE_GAP_MS, deDash, toBubbles } from "./textStyle";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Send each line as its own text, in order, with a short typing gap. */
+async function sendBubbles(send: (t: string) => Promise<boolean>, text: string): Promise<boolean> {
+  const bubbles = toBubbles(text);
+  let ok = bubbles.length > 0;
+  for (const [i, b] of bubbles.entries()) {
+    if (i) await sleep(BUBBLE_GAP_MS);
+    if (!(await send(b))) { ok = false; break; }
+  }
+  return ok;
+}
 
 const DISCORD_API = "https://discord.com/api/v10";
 const DISCORD_MAX = 2000;
@@ -80,13 +94,13 @@ async function discordSendDM(userId: string, text: string): Promise<boolean> {
 /** Send a 1:1 message to a user handle (iMessage address or "discord:<userId>"). Never throws. */
 export async function sendDirect(handle: string, text: string): Promise<boolean> {
   if (!handle) return false;
-  if (isDiscord(handle)) return discordSendDM(handle.slice(PREFIX.length), text);
-  return sendIMessage(handle, text);
+  if (isDiscord(handle)) return discordSendDM(handle.slice(PREFIX.length), deDash(text));
+  return sendBubbles((t) => sendIMessage(handle, t), text);
 }
 
 /** Send into a chat/group (BlueBubbles chat guid or "discord:<channelId>"). Never throws. */
 export async function sendToChat(chatId: string, text: string): Promise<boolean> {
   if (!chatId) return false;
-  if (isDiscord(chatId)) return discordSendChannel(chatId.slice(PREFIX.length), text);
-  return bbSendToChat(chatId, text);
+  if (isDiscord(chatId)) return discordSendChannel(chatId.slice(PREFIX.length), deDash(text));
+  return sendBubbles((t) => bbSendToChat(chatId, t), text);
 }
