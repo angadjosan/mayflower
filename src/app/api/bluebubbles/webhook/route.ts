@@ -10,7 +10,7 @@ import { bbEnabled, downloadAttachment, isImageAttachment, isVoiceMemo, sendAtta
 import { prepareSharedImages, storedTextFor } from "@/lib/sharedImages";
 import { ElevenLabsError, elevenEnabled, transcribe } from "@/lib/elevenlabs";
 import { wantsVoice } from "@/lib/voiceNotes";
-import { callsEnabled, callUrl, claimCall, ringUser, syncCallTranscripts, wantsCall } from "@/lib/calls";
+import { callsEnabled, callUrl, claimCall, releaseCall, ringUser, syncCallTranscripts, wantsCall } from "@/lib/calls";
 import { load, tx } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -105,7 +105,10 @@ export async function POST(req: Request) {
     // "call me": ring their phone, or text a link that opens a call in the browser.
     if (callsEnabled() && wantsCall(text)) {
       if (!(await claimCall(user.id))) return sendToUser(user.id, "one sec, we just tried you");
-      await sendToUser(user.id, (await ringUser(user.id)) ? "calling you now" : `tap to talk: ${callUrl(user.id)}`);
+      const rang = await ringUser(user.id);
+      // Nothing rang (a link instead): don't hold the 5-minute cooldown against their next "call me".
+      if (!rang) await releaseCall(user.id, (await load()).users.find((u) => u.id === user.id)?.lastCallAt ?? "");
+      await sendToUser(user.id, rang ? "calling you now" : `tap to talk: ${callUrl(user.id)}`);
       return;
     }
     const startedAt = Date.now();

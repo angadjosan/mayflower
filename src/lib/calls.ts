@@ -40,6 +40,14 @@ export async function claimCall(userId: string, now = Date.now()): Promise<boole
   });
 }
 
+/** Undo a claim when nothing actually rang, so a failed attempt doesn't block the next "call me" for 5 minutes. */
+export async function releaseCall(userId: string, claimedAt: string): Promise<void> {
+  await tx((db) => {
+    const u = db.users.find((x) => x.id === userId);
+    if (u && u.lastCallAt === claimedAt) u.lastCallAt = undefined;
+  });
+}
+
 /** The message is a request to talk live ("call me", "can we hop on a call"), not a belief that mentions calling. */
 export function wantsCall(text: string): boolean {
   const t = text.trim().replace(/[.!?\s]+$/, "");
