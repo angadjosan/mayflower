@@ -77,7 +77,7 @@ async function hedgeReply(userId: string, text: string): Promise<string> {
 
 const SOURCE_LABEL: Record<UserThesis["source"], string> = {
   chat: "From our chats", imessage: "From our chats", manual: "Added on the dashboard",
-  notion: "From Notion", slack: "From Slack", gmail: "From Gmail", discord: "From Discord",
+  notion: "From Notion", slack: "From Slack", gmail: "From Gmail", discord: "From Discord", local_texts: "From your own texts (local reader)",
 };
 
 async function sourcesText(userId: string): Promise<string> {

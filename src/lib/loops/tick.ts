@@ -8,13 +8,15 @@ import { syncAll } from "../connectors";
 import { runAlphaScan } from "./alpha";
 import { refreshPendingProposals } from "./pending";
 import { checkTheses } from "./thesis";
+import { runNewsCheckins } from "./newsCheckin";
+import { runMemoryLoop } from "../memory";
 
 const sec = (name: string, dflt: number) => {
   const n = Number(process.env[name]);
   return (isFinite(n) && n > 0 ? n : dflt) * 1000;
 };
 
-export const LOOP_NAMES = ["thesis", "pending", "alpha", "monitor"] as const;
+export const LOOP_NAMES = ["thesis", "pending", "alpha", "monitor", "news", "memory"] as const;
 export type LoopName = (typeof LOOP_NAMES)[number];
 
 export function loopIntervals(): Record<LoopName, number> {
@@ -23,6 +25,8 @@ export function loopIntervals(): Record<LoopName, number> {
     pending: sec("LOOP_PENDING_SEC", 600),
     alpha: sec("LOOP_ALPHA_SEC", 1800),
     monitor: sec("LOOP_MONITOR_SEC", 600),
+    news: sec("LOOP_NEWS_SEC", 3600),
+    memory: sec("LOOP_MEMORY_SEC", 1800),
   };
 }
 
@@ -33,6 +37,8 @@ const LOOPS: Record<LoopName, () => Promise<unknown>> = {
   thesis: checkTheses,
   pending: refreshPendingProposals,
   alpha: runAlphaScan,
+  news: () => runNewsCheckins(),
+  memory: runMemoryLoop,
   // The pre-existing 10-minute jobs: price/exit monitor, contest scoring, connector sync. Each isolated.
   monitor: async () => {
     const part = async <T,>(fn: () => Promise<T>) => {

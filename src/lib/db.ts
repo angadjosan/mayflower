@@ -18,7 +18,7 @@ import type {
   User, UserThesis, Market, ResearchReport, TradeProposal, Order, Position,
   ChatMessage, MonitorEvent, AuditEvent, PortfolioSnapshot,
   Group, Contest, ContestEntry, GroupPick,
-  ConnectedSource, ContextItem, AuditReceipt, ForecastScore, LoginToken, LoopState,
+  ConnectedSource, ContextItem, AuditReceipt, ForecastScore, LoginToken, LoopState, Memory, NewsCheckin,
 } from "./types";
 
 if (typeof window !== "undefined") throw new Error("lib/db is server-only");
@@ -45,6 +45,8 @@ export interface DB {
   forecastScores: ForecastScore[];
   loginTokens: LoginToken[];
   loopState: Record<string, LoopState>; // background research loops (see src/lib/loops/tick.ts)
+  memories: Memory[]; // durable per-user memory (src/lib/memory.ts)
+  newsCheckins: NewsCheckin[]; // "what do you think?" news texts (src/lib/loops/newsCheckin.ts)
 }
 
 const empty = (): DB => ({
@@ -52,7 +54,7 @@ const empty = (): DB => ({
   positions: [], messages: [], monitorEvents: [], audit: [], snapshots: [],
   groups: [], contests: [], contestEntries: [], groupPicks: [],
   connectedSources: [], contextItems: [], auditReceipts: [], forecastScores: [], loginTokens: [],
-  loopState: {},
+  loopState: {}, memories: [], newsCheckins: [],
 });
 const normalize = (raw: unknown): DB => ({ ...empty(), ...((raw && typeof raw === "object" ? raw : {}) as Partial<DB>) });
 
@@ -190,6 +192,7 @@ export const DEFAULT_LIMITS = {
 
 /** Single-user MVP default: the web dashboard acts as this user. iMessage users are keyed by handle. */
 export const DEMO_USER_ID = "user_demo";
+export const DEFAULT_TIMEZONE = "America/Los_Angeles";
 
 export async function getOrCreateUser(opts: { id?: string; handle?: string } = {}): Promise<User> {
   const newId = id("user_"), createdAt = now(); // generated outside fn so retries are deterministic
@@ -206,7 +209,7 @@ export async function getOrCreateUser(opts: { id?: string; handle?: string } = {
       u = {
         id: opts.handle ? newId : opts.id ?? DEMO_USER_ID,
         handle: opts.handle, createdAt, onboarded: false, paused: false,
-        limits: { ...DEFAULT_LIMITS }, geminiLinked: false,
+        limits: { ...DEFAULT_LIMITS }, geminiLinked: false, timezone: DEFAULT_TIMEZONE,
       };
       db.users.push(u);
     }
