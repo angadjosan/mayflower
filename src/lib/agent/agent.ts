@@ -16,6 +16,7 @@ import { remember, forget, memoryContext } from "../memory";
 import { revokeUploadToken, deleteLocalTexts } from "../ingest";
 import { pendingCheckins, markCheckinAnswered } from "../loops/newsCheckin";
 import type { Market, OnboardingState, ResearchReport, Side, TradeProposal, User } from "../types";
+import { callsEnabled, callUrl, claimCall, ringUser } from "../calls";
 import { notionInternal, notionInternalConnection, saveConnection, syncSource } from "../connectors";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
@@ -140,6 +141,11 @@ const tools: Anthropic.Tool[] = [
     name: "research_market",
     description: "Research one market with live web sources (Context.dev) and an independent forecast. Slow (~15-30s). Returns Mayflower's probability, evidence for/against and citations.",
     input_schema: { type: "object", properties: { marketId: { type: "string" } }, required: ["marketId"] },
+  },
+  {
+    name: "call_user",
+    description: "Phone the user right now for a live voice chat (or text them a tap-to-talk link if we can't ring their number). Use whenever they ask you to call them, in any wording, or want to talk instead of text.",
+    input_schema: { type: "object", properties: { reason: { type: "string", description: "What they want to talk about" } }, required: [] },
   },
   {
     name: "propose_trade",
@@ -310,6 +316,15 @@ async function runTool(userId: string, name: string, input: Input): Promise<unkn
         evidenceAgainst: r.evidenceAgainst.map((e) => e.point).slice(0, 4),
         critic: r.criticNotes, sources: r.citations.slice(0, 4).map((c) => ({ title: c.title, url: c.url })), sourceType: r.source,
       };
+    }
+
+    case "call_user": {
+      if (!callsEnabled()) return { error: "calls aren't set up on this server" };
+      if (!(await claimCall(userId))) return { ok: false, note: "we just called or texted them a call link in the last few minutes" };
+      if (await ringUser(userId)) return { ok: true, ringing: true, note: "their phone is ringing now; say you're calling" };
+      // Send the link ourselves: models drop URLs from replies.
+      await sendToUser(userId, `tap to talk: ${callUrl(userId)}`);
+      return { ok: true, ringing: false, note: "we can't ring this number, so we already texted them a tap-to-talk link; just say it's there" };
     }
 
     case "propose_trade":

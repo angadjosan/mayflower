@@ -43,7 +43,7 @@ export async function claimCall(userId: string, now = Date.now()): Promise<boole
 /** The message is a request to talk live ("call me", "can we hop on a call"), not a belief that mentions calling. */
 export function wantsCall(text: string): boolean {
   const t = text.trim().replace(/[.!?\s]+$/, "");
-  return t.length <= 40 && /^(yo |hey |ok |pls |please )?(call me|give me a call|can (we|you) (talk|call)( me)?|hop on a call|(phone|voice) call|let'?s (talk|call)|ring me)( (now|pls|please))?$/i.test(t);
+  return t.length <= 40 && /^(yo |hey |ok |pls |please |bro |can you )?(call me|give me a call|can (we|you) (talk|call)( me)?|hop on a call|(phone|voice) call|let'?s (talk|call)|ring me)( (now|rn|pls|please|bro|asap))*$/i.test(t);
 }
 
 /** What the agent opens with: the given (or freshest) pending trade idea, else an open question. */
