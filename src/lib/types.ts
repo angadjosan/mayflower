@@ -18,6 +18,7 @@ export interface User {
   onboarded: boolean;
   paused: boolean; // kill switch: no orders while paused
   lastCallAt?: string; // last time we rang or texted a call link (cooldown)
+  unsyncedCalls?: string[]; // ElevenLabs conversation ids whose transcripts still need copying into chat history
   limits: RiskLimits;
   geminiLinked: boolean; // MVP: shared sandbox account; true once user "links"
   lastAlphaAt?: string; // last unsolicited alpha-scan text (throttle)

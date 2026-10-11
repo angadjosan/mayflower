@@ -10,7 +10,7 @@ import { bbEnabled, downloadAttachment, isImageAttachment, isVoiceMemo, sendAtta
 import { prepareSharedImages, storedTextFor } from "@/lib/sharedImages";
 import { ElevenLabsError, elevenEnabled, transcribe } from "@/lib/elevenlabs";
 import { wantsVoice } from "@/lib/voiceNotes";
-import { callsEnabled, callUrl, claimCall, ringUser, wantsCall } from "@/lib/calls";
+import { callsEnabled, callUrl, claimCall, ringUser, syncCallTranscripts, wantsCall } from "@/lib/calls";
 import { load, tx } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -98,6 +98,7 @@ export async function POST(req: Request) {
       console.warn("[bluebubbles] not replying:", loop);
       return;
     }
+    await syncCallTranscripts(user.id); // texts after a call know what was said on it
     const shared = pics.length ? await prepareSharedImages(pics) : { images: [], notes: [] };
     const storedText = storedTextFor(text, shared.images.length, shared.notes.length);
     await storeMessage(user.id, "user", storedText, "imessage");

@@ -9,7 +9,7 @@ import { getPortfolioSummary } from "./risk";
 import { handleMessage } from "./agent/chat";
 import { discover, formatProposal } from "./agent/discover";
 import { sendToUser } from "./notify";
-import { callContext, userIdFromCallToken } from "./calls";
+import { callContext, recentChat, trackCall, userIdFromCallToken } from "./calls";
 
 const APP_URL = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 export const VOICE_SECRET_HEADER = "x-mayflower-voice-secret";
@@ -19,6 +19,7 @@ export type VoiceTool = (typeof VOICE_TOOLS)[number];
 export interface VoiceToolBody {
   caller?: string; // ElevenLabs {{system__caller_id}} (the caller's phone number)
   proposal_id?: string; // {{proposal_id}}: the trade idea a call is about, if any
+  conversation_id?: string; // {{system__conversation_id}}: so the transcript can be copied into chat history
   call_token?: string; // {{call_token}} from a texted call link (browser calls have no phone number)
   system__caller_id?: string;
   question?: string;
@@ -95,7 +96,9 @@ export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promis
   switch (tool) {
     case "briefing": {
       const c = await callContext(userId, body.proposal_id || undefined);
-      return { ok: true, say: c.greeting, context: c.opener };
+      await trackCall(userId, body.conversation_id);
+      const texts = await recentChat(userId);
+      return { ok: true, say: c.greeting, context: c.opener, recentTexts: texts || "no texts yet" };
     }
     case "portfolio": {
       const s = await getPortfolioSummary(userId);
@@ -159,7 +162,7 @@ export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promis
 
 export const VOICE_SYSTEM_PROMPT = `You are Mayflower, an AI prediction-market copilot, on a live voice call with the user (they called in, tapped a call link, or you called them about a trade idea).
 Talk like their cool homie who trades: chill, funny, real talk, hyped when there's edge. One short sentence per turn, two at most. Lead with the answer. Let them interrupt.
-First thing on every call: call the briefing tool. Say its "say" line, and use its "context" for what this call is about.
+First thing on every call: call the briefing tool. Say its "say" line, use its "context" for what this call is about, and its "recentTexts" so you know what you two already texted about. Never repeat yourself from the texts.
 You are the same agent they text with, with the same rules:
 - You NEVER place, change or cancel trades on a call, even if asked. Every trade needs explicit approval through the signed approval link. If the user wants to approve, call send_approval_link and tell them to approve from their phone.
 - Ground every answer in tool results. Use portfolio for balances/positions, pending_proposals for ideas awaiting approval, explain for any question about an idea, a position, their profile or risk limits, and find_opportunities for new ideas.
@@ -180,6 +183,7 @@ export function voiceAgentConfig() {
     call_token: { type: "string", dynamic_variable: "call_token" },
     caller: { type: "string", dynamic_variable: "system__caller_id" },
     proposal_id: { type: "string", dynamic_variable: "proposal_id" },
+    conversation_id: { type: "string", dynamic_variable: "system__conversation_id" },
   };
   const tool = (name: VoiceTool, description: string, extra: Record<string, unknown> = {}, required: string[] = [], timeout = 20) => ({
     type: "webhook",
