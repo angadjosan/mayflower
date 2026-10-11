@@ -5,6 +5,8 @@ import type { ProfilePatch, UserProfile } from '../core/types.js';
 
 export const DEFAULT_BUDGET = 200;
 export const DEFAULT_CAP = 20;
+export const MAX_BUDGET = 1000;
+export const MAX_CAP = 100;
 
 interface UserRow {
   phone: string; name: string | null; risk_budget: number; per_trade_cap: number;
@@ -32,10 +34,12 @@ export async function updateUser(db: Db, phone: string, p: ProfilePatch, onboard
        excluded_topics = coalesce($6, excluded_topics),
        onboarded = onboarded or $7
      where phone = $1 returning *`,
-    [phone, p.name ?? null, p.riskBudget ?? null, p.perTradeCap ?? null, p.interests ?? null, p.excludedTopics ?? null, onboarded],
+    [phone, p.name ?? null, clampMoney(p.riskBudget, MAX_BUDGET), clampMoney(p.perTradeCap, MAX_CAP), p.interests ?? null, p.excludedTopics ?? null, onboarded],
   );
   return toProfile(row);
 }
+
+const clampMoney = (x: number | undefined, max: number) => (x == null || !Number.isFinite(x) || x <= 0 ? null : Math.min(x, max));
 
 /** Returns false when this external message id was already processed (webhook retry / duplicate). */
 export async function logMessage(db: Db, m: { phone: string; direction: 'in' | 'out'; channel: string; body: string; hasAudio?: boolean; externalId?: string | null }): Promise<boolean> {
@@ -57,8 +61,11 @@ export async function openExposure(db: Db, phone: string, eventTicker: string): 
   const rows = await db.query<{ cost_basis: number; event_ticker: string | null }>(
     `select p.cost_basis, m.event_ticker from positions p left join markets m on m.instrument_symbol = p.instrument_symbol
      where p.user_phone = $1 and p.status = 'open'`, [phone]);
+  const [{ reserved }] = await db.query<{ reserved: number }>(
+    `select coalesce(sum(pr.stake), 0)::float as reserved from proposals pr left join orders o on o.proposal_id = pr.id
+     where pr.user_phone = $1 and (pr.status = 'approved' or (pr.status = 'executed' and o.status in ('submitting','open','partially_filled','unknown')))`, [phone]);
   return {
-    total: rows.reduce((s, r) => s + Number(r.cost_basis), 0),
+    total: rows.reduce((s, r) => s + Number(r.cost_basis), 0) + Number(reserved),
     correlated: rows.some((r) => r.event_ticker === eventTicker),
   };
 }

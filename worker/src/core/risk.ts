@@ -77,7 +77,8 @@ export function marketProbYes(q: Quote): number | null {
 }
 
 function sideBook(q: Quote, s: Side) {
-  const ask = s === 'yes' ? q.yesAsk : q.noAsk;
+  const rawAsk = s === 'yes' ? q.yesAsk : q.noAsk;
+  const ask = rawAsk != null && rawAsk > 0 && rawAsk < 1 ? rawAsk : null;
   const bid = s === 'yes' ? q.yesBid : q.noBid;
   return { ask, spread: ask != null && bid != null ? Math.max(0, ask - bid) : null };
 }
@@ -131,10 +132,10 @@ export function decide(input: RiskInput, params: RiskParams): RiskDecision {
   if (input.balance != null && stake > input.balance) { stake = input.balance; capsApplied.push('balance'); }
   if (input.correlatedOpen) { stake /= 2; capsApplied.push('correlated_halved'); }
 
-  const limitPrice = r4(Math.min(0.99, round(pick.ask, input.priceIncrement)));
+  const limitPrice = r4(Math.min(0.99, Math.ceil(pick.ask / input.priceIncrement - 1e-9) * input.priceIncrement));
   const step = input.quantityIncrement > 0 ? input.quantityIncrement : 1;
   const qty = r4(Math.floor(stake / limitPrice / step) * step);
-  if (qty < input.quantityMinimum || qty <= 0) {
+  if (!Number.isFinite(qty) || qty < input.quantityMinimum || qty <= 0 || limitPrice <= 0) {
     reasons.push('edge exists but the allowed stake is below the minimum order');
     return { ...base, verdict, side: null, price: limitPrice, spread: pick.spread, edge: pick.edge, threshold: pick.threshold, kellyF: r4(kellyF), rawStake: r4(rawStake), capsApplied, reasons };
   }

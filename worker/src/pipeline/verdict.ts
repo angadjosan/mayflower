@@ -70,12 +70,13 @@ export async function runVerdict(app: App, user: UserProfile, belief: string, so
   }, config.risk);
 
   const researchId = await saveResearch(app, beliefId, market, bundle, pModelYes, decision, critique);
-  const text0 = describe(market, match.beliefSide, decision, user, null);
+  const realOrder = market.sandboxListed && app.executor.mode === 'sandbox';
+  const text0 = describe(market, match.beliefSide, decision, user, null, realOrder);
   const verdictId = await saveVerdict(app, user, beliefId, market, researchId, decision.verdict, text0, { ...decision, quote, beliefSide: match.beliefSide, forecastReasoning: forecast.reasoning });
 
   let code: string | null = null;
   if (decision.side && decision.qty > 0) code = await createProposal(app, user, verdictId, market, decision);
-  const text = describe(market, match.beliefSide, decision, user, code);
+  const text = describe(market, match.beliefSide, decision, user, code, realOrder);
   return { verdictId, type: decision.verdict, text: withLink(text, verdictId), speech: text.split('. ').slice(0, 3).join('. ') };
 }
 
@@ -90,10 +91,10 @@ function summarize(bundle: ResearchBundle, critique: { severity: 'none' | 'minor
   return { sourceCount: bundle.sources.length, distinctDomains: hosts.size, recentCount: recent, criticSeverity: critique.severity, staleEvidence: critique.staleEvidence };
 }
 
-function describe(m: Market, beliefSide: Side, d: RiskDecision, user: UserProfile, code: string | null): string {
+function describe(m: Market, beliefSide: Side, d: RiskDecision, user: UserProfile, code: string | null, realOrder: boolean): string {
   const mkt = beliefSide === 'yes' ? d.pMarketYes : 1 - d.pMarketYes;
   const mine = beliefSide === 'yes' ? d.pFinalYes : 1 - d.pFinalYes;
-  const venue = m.sandboxListed ? '' : ' (production market: the fill will be simulated at the live price)';
+  const venue = realOrder ? ' (Gemini sandbox order)' : ' (SIMULATED: no real order will be placed)';
   if (d.verdict === 'priced_in') {
     const lead = mine >= 0.5 ? 'Probably true, still a bad bet.' : 'Priced in.';
     return `${lead} Gemini has "${m.title}" at ${pct(mkt)}. The evidence puts me at ${pct(mine)}. No edge after the spread, so I'd pass.`;
@@ -139,8 +140,11 @@ async function createProposal(app: App, user: UserProfile, verdictId: string, m:
   const expires = new Date(Date.now() + config.risk.proposalTtlMinutes * 60e3).toISOString();
   // supersede older pending proposals so only the newest code is live
   await app.db.query(`update proposals set status = 'cancelled' where user_phone = $1 and status = 'pending'`, [user.phone]);
+  const recent = new Set((await app.db.query<{ code: string }>(
+    `select code from proposals where user_phone = $1 and created_at > now() - interval '24 hours'`, [user.phone])).map((r) => r.code));
   for (let attempt = 0; attempt < 5; attempt++) {
-    const code = newApprovalCode();
+    let code = newApprovalCode();
+    for (let i = 0; recent.has(code) && i < 50; i++) code = newApprovalCode();
     try {
       const [{ id }] = await app.db.query<{ id: string }>(
         `insert into proposals (user_phone, verdict_id, instrument_symbol, side, qty, limit_price, stake, max_loss, exit_rules, code, expires_at)

@@ -64,3 +64,9 @@ test('missing model forecast falls back to the market price, so no edge', () => 
   const d = decide(input({ pModelYes: NaN }), params);
   assert.equal(d.verdict, 'priced_in');
 });
+
+test('a zero ask is treated as no price, never an infinite order', () => {
+  const d = decide(input({ pModelYes: 0.9, quote: { symbol: 'X', yesBid: 0, yesAsk: 0, noBid: 0.99, noAsk: 1, ts: '' } }), params);
+  assert.equal(d.side, null);
+  assert.ok(Number.isFinite(d.qty) && Number.isFinite(d.stake));
+});

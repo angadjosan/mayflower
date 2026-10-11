@@ -101,7 +101,8 @@ export interface OrderRequest {
   clientOrderId: string;     // = proposal id; dedupes resubmits
 }
 
-export type OrderStatus = 'filled' | 'partially_filled' | 'open' | 'cancelled' | 'rejected';
+/** 'unknown' = we may have reached the exchange but could not confirm; never treat as failed. */
+export type OrderStatus = 'filled' | 'partially_filled' | 'open' | 'cancelled' | 'rejected' | 'unknown';
 
 export interface OrderResult {
   status: OrderStatus;

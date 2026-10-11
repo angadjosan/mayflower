@@ -39,6 +39,9 @@ export async function buildApp(opts: { recordTicks?: boolean } = {}): Promise<Ap
   }
   const llm = config.googleApiKey ? new GoogleLlm(config.googleApiKey, config.llmModel, config.llmFastModel) : new FakeLlm();
   const research = config.contextDevKey ? new ContextDevResearch(config.contextDevKey) : new NoResearch();
+  if (config.bluebubbles.url && (config.bluebubbles.webhookSecret === 'dev-secret-change-me' || config.bluebubbles.webhookSecret.length < 24)) {
+    throw new Error('Set WEBHOOK_SECRET to a random string of 24+ chars before enabling BlueBubbles (it guards the webhook and /dev/message)');
+  }
   const messenger = config.bluebubbles.url && config.bluebubbles.password
     ? new BlueBubblesMessenger(config.bluebubbles.url, config.bluebubbles.password)
     : new ConsoleMessenger();

@@ -60,15 +60,15 @@ export class SandboxExecutor implements Executor {
       orderType: 'limit',
       side: 'buy',
       quantity: String(req.qty),
-      price: req.limitPrice.toFixed(2),
+      price: String(req.limitPrice),
       outcome: req.side,
       timeInForce: 'good-til-cancel',
       makerOrCancel: false,
     };
     const placed = await this.post('/v1/prediction-markets/order', body);
     if (placed.status >= 400 || !placed.json || placed.json.orderId === undefined) {
-      const rejected = placed.status === 422 || placed.status === 400;
-      return { status: rejected ? 'rejected' : 'rejected', exchangeOrderId: null, filledQty: 0, avgPrice: null, error: `HTTP ${placed.status}: ${JSON.stringify(placed.json)}`, simulated: false, raw: placed.json };
+      const rejected = placed.status >= 400 && placed.status < 500;
+      return { status: rejected ? 'rejected' : 'unknown', exchangeOrderId: null, filledQty: 0, avgPrice: null, error: `HTTP ${placed.status}: ${JSON.stringify(placed.json)}`, simulated: false, raw: placed.json };
     }
     let order = placed.json as GeminiOrder;
     const id = String(order.orderId);
@@ -107,7 +107,8 @@ export class SandboxExecutor implements Executor {
     let status: OrderStatus;
     if (o.status === 'filled') status = 'filled';
     else if (o.status === 'cancelled') status = filled > 0 ? 'partially_filled' : 'cancelled';
-    else status = filled > 0 && (!total || filled < total) ? 'partially_filled' : 'open';
+    else if (['open', 'accepted', 'new', 'live', 'active', 'booked'].includes(String(o.status).toLowerCase())) status = filled > 0 && (!total || filled < total) ? 'partially_filled' : 'open';
+    else status = filled > 0 ? 'partially_filled' : 'unknown';
     return { status, exchangeOrderId: String(o.orderId), filledQty: filled, avgPrice: avg, error: null, simulated: false, raw: o };
   }
 }

@@ -98,7 +98,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
         {o ? (
           <div className="space-y-1 text-sm">
             <div className="flex items-center gap-2">
-              <b className="uppercase">{o.status.replace('_', ' ')}</b>
+              <b className="uppercase">{o.status.replaceAll('_', ' ')}</b>
               {o.simulated && <Badge>SIMULATED</Badge>}
             </div>
             <div className="text-gray-600">Filled {o.filledQty} @ {pct(o.avgPrice)}</div>

@@ -77,8 +77,8 @@ export class GeminiCatalog implements Catalog {
               status: c.marketState === 'closed' ? 'closed' : (c.status ?? ev.status ?? 'active'),
               priceIncrement: num(c.priceIncrement) ?? 0.01,
               priceMinimum: num(c.priceMinimum) ?? 0.01,
-              quantityIncrement: num(c.quantityIncrement) ?? 0.01,
-              quantityMinimum: num(c.quantityMinimum) ?? 0.01,
+              quantityIncrement: num(c.quantityIncrement) ?? 1,
+              quantityMinimum: num(c.quantityMinimum) ?? 1,
               sandboxListed: false,
             };
             const tags = (ev.tags ?? []).map((t) => (typeof t === 'string' ? t : JSON.stringify(t))).join(' ');
@@ -170,7 +170,8 @@ export class GeminiCatalog implements Catalog {
     if (Date.now() - e.fetchedAt > 60_000) await this.refreshOne(e).catch(() => undefined);
     const has = (x?: Quote) => !!x && (x.yesAsk !== null || x.yesBid !== null);
     const primary = e.market.sandboxListed ? e.sandbox : e.prod;
-    return has(primary) ? primary! : (has(e.prod) ? e.prod! : primary ?? e.prod ?? null);
+    if (e.market.sandboxListed) return has(e.sandbox) ? e.sandbox! : null;
+    return has(e.prod) ? e.prod! : null;
   }
 
   private async refreshOne(e: Entry): Promise<void> {

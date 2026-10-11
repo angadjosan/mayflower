@@ -43,9 +43,13 @@ export class BlueBubblesMessenger implements Messenger {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chatGuid, tempGuid: `mf-${randomUUID()}`, message: text, method: 'apple-script' }),
     });
-    if (res.ok) return;
-    const firstError = (await res.text()).slice(0, 500);
-    const chatMissing = res.status === 404 || /chat/i.test(firstError);
+    const raw = await res.text();
+    // BlueBubbles can answer HTTP 200 with an error envelope; only a clean status counts as sent
+    let env: { status?: number; error?: unknown } = {};
+    try { env = JSON.parse(raw); } catch { /* non-JSON body */ }
+    if (res.ok && !env.error && (env.status === undefined || env.status < 400)) return;
+    const firstError = raw.slice(0, 500);
+    const chatMissing = res.status === 404 || /chat[^.]{0,40}(not found|does not exist|doesn't exist)/i.test(firstError);
     if (!chatMissing) throw new Error(`BlueBubbles /message/text failed ${res.status}: ${firstError}`);
     await postJson(this.bb, '/chat/new', {
       addresses: [to],

@@ -10,7 +10,11 @@ const queues = new Map<string, Promise<void>>();
 /** Serializes messages per user so two texts from one phone never race each other. */
 export function enqueueInbound(app: App, msg: InboundMessage): Promise<void> {
   const prev = queues.get(msg.from) ?? Promise.resolve();
-  const next = prev.then(() => handleInbound(app, msg)).catch((e) => console.error('[pipeline]', e));
+  const next = prev.then(() => handleInbound(app, msg)).catch(async (e) => {
+    console.error('[pipeline]', e);
+    await app.messenger.send({ to: msg.from, text: `Something broke on my side while working on that. Text it again in a minute.` })
+      .catch((e2) => console.error('[pipeline] fallback reply failed', e2));
+  });
   queues.set(msg.from, next);
   void next.finally(() => { if (queues.get(msg.from) === next) queues.delete(msg.from); });
   return next;

@@ -34,7 +34,11 @@ export async function approve(app: App, phone: string, code: string): Promise<st
   try {
     result = await executor.place(req, market);
   } catch (e) {
-    return fail(app, p.id, (e as Error).message);
+    const reason = (e as Error).message;
+    await app.db.query(`update orders set status = 'unknown', error = $2, updated_at = now() where proposal_id = $1`, [p.id, reason]);
+    await app.db.query(`update proposals set status = 'executed' where id = $1`, [p.id]);
+    await audit(app.db, 'executor', 'order_unknown', p.id, { reason });
+    return `I sent the order but couldn't confirm what happened (${reason}). Don't re-approve; check the case page for the real status.`;
   }
 
   await app.db.query(
@@ -55,11 +59,12 @@ export async function approve(app: App, phone: string, code: string): Promise<st
     );
   }
 
-  const label = result.simulated ? ' (SIMULATED fill at the live price, not a real order)' : ' (Gemini sandbox)';
+  const label = result.simulated ? ' (SIMULATED, no real order was placed)' : ' (Gemini sandbox)';
   switch (result.status) {
     case 'filled': return `Filled: ${result.filledQty} ${p.side.toUpperCase()} on ${market.title} at ${pct(result.avgPrice)}${label}.`;
     case 'partially_filled': return `Partly filled: ${result.filledQty} of ${p.qty} at ${pct(result.avgPrice)}${label}. The rest is resting at ${pct(p.limit_price)}.`;
-    case 'open': return `Order placed and resting at ${pct(p.limit_price)}${label}. I'll text you when it fills.`;
+    case 'open': return `Order placed and resting at ${pct(p.limit_price)}${label}. Not filled yet; the case page shows its live status.`;
+    case 'unknown': return `I sent the order but couldn't confirm its status${label}. Don't re-approve; check the case page.`;
     default: return `Gemini rejected the order: ${result.error ?? result.status}. Nothing was bought.`;
   }
 }

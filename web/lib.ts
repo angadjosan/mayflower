@@ -4,7 +4,7 @@ const BASE = process.env.WORKER_URL ?? 'http://localhost:8787';
 
 async function get<T>(path: string): Promise<T | null> {
   try {
-    const r = await fetch(`${BASE}${path}`, { cache: 'no-store' });
+    const r = await fetch(`${BASE}${path}`, { cache: 'no-store', signal: AbortSignal.timeout(5000) });
     if (!r.ok) return null;
     return (await r.json()) as T;
   } catch {
