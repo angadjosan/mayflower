@@ -8,7 +8,7 @@ URL="${MAYFLOWER_URL:-https://mayflower-lac.vercel.app}"
 SECRET="$(grep '^CRON_SECRET=' ../.env.local | cut -d= -f2-)"
 [ -n "$SECRET" ] || { echo "CRON_SECRET missing in .env.local"; exit 1; }
 
-fly status -a "$APP" >/dev/null 2>&1 || fly apps create "$APP"
+fly status -a "$APP" >/dev/null 2>&1 || fly apps create "$APP" --org personal
 printf 'MAYFLOWER_URL=%s\nCRON_SECRET=%s\n' "$URL" "$SECRET" | fly secrets import -a "$APP" --stage
 fly deploy -c fly.toml -a "$APP" --ha=false
 fly scale count 1 -a "$APP" --yes
