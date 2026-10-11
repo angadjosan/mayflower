@@ -13,14 +13,15 @@ import RiskPanel from "@/components/RiskPanel";
 import { post, type DashState, type ProposalView } from "@/components/state";
 import { TickerStrip } from "@/components/TickerStrip";
 import { TopBar } from "@/components/TopBar";
-import { Card, Logo, SectionHead } from "@/components/ui";
+import { Icon } from "@/components/icons";
+import { Logo, SectionHead } from "@/components/ui";
 
 const TABS = [
-  { key: "risk", label: "Risk" },
-  { key: "profile", label: "Profile & limits" },
-  { key: "connections", label: "Connections" },
-  { key: "receipts", label: "Receipts" },
-  { key: "activity", label: "Activity" },
+  { key: "risk", label: "Risk", icon: "shield" },
+  { key: "profile", label: "Limits", icon: "user" },
+  { key: "connections", label: "Apps", icon: "plug" },
+  { key: "receipts", label: "Receipts", icon: "receipt" },
+  { key: "activity", label: "Activity", icon: "pulse" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -111,21 +112,21 @@ export default function Dashboard() {
 
       <main className="mx-auto max-w-6xl px-4 pb-16 pt-8 sm:px-6 sm:pt-10">
         {s.user.paused && (
-          <div className="mb-6 flex items-center justify-between gap-3 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3 text-[13px] text-warn">
-            <span>Trading is paused. Mayflower won&apos;t place any orders until you turn it back on.</span>
-            <button onClick={() => run(() => post("/api/settings", { paused: false }), "Trading resumed.")} disabled={busy} className="shrink-0 font-medium underline underline-offset-2">
-              Resume
+          <div className="mb-6 flex items-center gap-2 rounded-full border border-warn/30 bg-warn-soft py-1.5 pl-3 pr-1.5 text-[13px] font-medium text-warn" title="No orders will be placed while paused">
+            <Icon name="pause" className="h-3.5 w-3.5" />
+            Trading paused
+            <button onClick={() => run(() => post("/api/settings", { paused: false }), "Trading resumed.")} disabled={busy} className="ml-auto flex h-7 items-center gap-1 rounded-full bg-warn px-3 text-xs text-bg">
+              <Icon name="play" className="h-3 w-3" />Resume
             </button>
           </div>
         )}
 
         <PortfolioHero s={s} />
 
-        <section className="mt-16">
+        <section className="mt-12">
           <SectionHead
             title="Ideas"
             count={pending.length}
-            sub="Trades Mayflower is proposing. Nothing executes until you approve it."
             action={<DiscoverForm onDiscover={discover} discovering={discovering} />}
           />
           <Recommendations
@@ -134,40 +135,38 @@ export default function Dashboard() {
           />
         </section>
 
-        <section className="mt-16">
-          <SectionHead title="Positions" count={openPositions.length} sub="Tap a row for the thesis, evidence and exit options." />
+        <section className="mt-12">
+          <SectionHead title="Positions" count={openPositions.length} />
           <Positions positions={s.positions} events={s.monitorEvents} onChanged={load} />
           {working.length > 0 && (
             <div className="mt-8">
               <h3 className="mb-3 flex items-center gap-2 text-[15px] font-semibold tracking-tight text-fg">
-                Open orders <span className="num rounded-full bg-sunken px-2 py-0.5 text-xs font-medium text-muted">{working.length}</span>
+                <Icon name="clock" className="h-4 w-4 text-muted" />Orders <span className="num rounded-full bg-sunken px-2 py-0.5 text-xs font-medium text-muted">{working.length}</span>
               </h3>
               <OpenOrders orders={s.orders} onChanged={load} />
             </div>
           )}
         </section>
 
-        <section className="mt-16">
-          <div className="no-scrollbar -mx-4 mb-5 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-            <div className="flex min-w-max gap-6 border-b border-line" role="tablist">
-              {TABS.map((t) => (
-                <button
-                  key={t.key}
-                  role="tab"
-                  aria-selected={tab === t.key}
-                  onClick={() => setTab(t.key)}
-                  className={`-mb-px border-b-2 pb-3 text-sm transition-colors ${tab === t.key ? "border-fg font-medium text-fg" : "border-transparent text-muted hover:text-fg"}`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
+        <section className="mt-12">
+          <div className="mb-4 grid grid-cols-5 gap-1 rounded-2xl bg-sunken p-1" role="tablist">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                role="tab"
+                aria-selected={tab === t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex flex-col items-center justify-center gap-1 rounded-xl py-2 text-[11px] font-medium transition-colors sm:flex-row sm:gap-1.5 sm:text-[13px] ${tab === t.key ? "bg-surface text-fg shadow-[0_1px_2px_rgba(0,0,0,0.12)] ring-1 ring-line-strong" : "text-muted hover:text-fg"}`}
+              >
+                <Icon name={t.icon} className="h-4 w-4" />
+                {t.label}
+              </button>
+            ))}
           </div>
           <div role="tabpanel" className="animate-fade" key={tab}>
             {tab === "risk" && <RiskPanel />}
             {tab === "profile" && (
-              <Card>
-                <Profile
+              <Profile
                   user={s.user}
                   theses={s.theses}
                   busy={busy}
@@ -180,15 +179,14 @@ export default function Dashboard() {
                     }, "Gemini linked.")
                   }
                 />
-              </Card>
             )}
             {tab === "connections" && <Connections />}
             {tab === "receipts" && <Receipts />}
-            {tab === "activity" && <Card><ActivityLog audit={s.audit} /></Card>}
+            {tab === "activity" && <ActivityLog audit={s.audit} />}
           </div>
         </section>
 
-        <div className="mt-20">
+        <div className="mt-14">
           <Footer
             busy={busy}
             onMonitor={() => run(() => post("/api/cron/monitor"), "Monitor ran.")}

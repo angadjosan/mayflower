@@ -74,7 +74,6 @@ export function TickerStrip({ s }: { s: DashState }) {
             <span className="shrink-0 text-[11px] text-subtle">YES</span>
           </div>
         ))}
-        <span className="ml-auto shrink-0 pl-2 text-[11px] text-subtle">Prices: Gemini</span>
       </div>
     </div>
   );

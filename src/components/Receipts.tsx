@@ -1,14 +1,12 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import type { AuditReceipt } from "@/lib/types";
-import { Badge, Button, Card, Empty, time } from "./ui";
+import { Icon } from "./icons";
+import { Button, Chip, InfoTip, Ring, time } from "./ui";
 
 const EXPLORER = "https://testnet.bscscan.com/tx/";
 
 type Verify = { ok: boolean; hashMatches: boolean; onchainMatches?: boolean; error?: string };
-
-const statusTone = (s: AuditReceipt["status"]) =>
-  s === "committed" ? "good" : s === "failed" ? "warn" : s === "pending" ? "accent" : "neutral";
 
 const short = (h: string, n = 10) => (h.length > n * 2 ? `${h.slice(0, n)}…${h.slice(-6)}` : h);
 
@@ -59,58 +57,61 @@ export default function Receipts() {
     }
   }
 
+  const committed = receipts.filter((r) => r.status === "committed").length;
   return (
-    <Card
-      title="Audit receipts"
-      action={<Button onClick={commitPolicy} disabled={busy}>{busy ? "Committing…" : "Commit my policy"}</Button>}
-    >
-      <p className="mb-3 text-xs text-muted">
-        Each approval and your trading policy (risk limits, trade-only, no withdrawals) is hashed and
-        {onchain ? " committed to BNB Smart Chain testnet." : " recorded here. Onchain commits are off (no testnet key configured)."}{" "}
-        Only a hash is stored onchain — no personal data.
-      </p>
-      {error && <div className="mb-3 text-xs text-down">{error}</div>}
+    <div className="space-y-3">
+      <div className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 shadow-card">
+        <Ring value={receipts.length ? committed / receipts.length : 0} size={48} stroke={4.5} color="var(--up)" label={`${committed} of ${receipts.length} committed onchain`}>
+          <Icon name="receipt" className="h-4 w-4 text-fg-2" />
+        </Ring>
+        <div className="min-w-0 flex-1">
+          <div className="num text-sm font-semibold text-fg">{receipts.length} <span className="font-normal text-muted">receipts</span></div>
+          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+            <span className={`h-1.5 w-1.5 rounded-full ${onchain ? "bg-up" : "bg-line-strong"}`} />
+            {onchain ? "BNB testnet" : "Local only"}
+          </div>
+        </div>
+        <InfoTip title="Audit receipts">
+          <p>Each approval and your trading policy (risk limits, trade-only, no withdrawals) is hashed. {onchain ? "The hash is committed to BNB Smart Chain testnet." : "Onchain commits are off on this server (no testnet key)."}</p>
+          <p>Only the hash goes onchain, never personal data.</p>
+        </InfoTip>
+        <Button size="sm" variant="outline" onClick={commitPolicy} disabled={busy}>
+          <Icon name="shield" className="h-3.5 w-3.5" />{busy ? "…" : "Commit"}
+        </Button>
+      </div>
+      {error && <div className="text-xs text-down">{error}</div>}
       {loading ? (
-        <div className="text-sm text-subtle">Loading…</div>
-      ) : receipts.length === 0 ? (
-        <Empty>No receipts yet. Approve a trade or commit your policy to create one.</Empty>
-      ) : (
-        <ul className="divide-y divide-line">
+        <div className="h-16 animate-pulse rounded-2xl bg-sunken" />
+      ) : receipts.length > 0 && (
+        <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
           {receipts.map((r) => {
             const v = verified[r.id];
+            const dot = r.status === "committed" ? "bg-up" : r.status === "failed" ? "bg-down" : r.status === "pending" ? "bg-warn" : "bg-line-strong";
             return (
-              <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
-                <Badge tone={r.kind === "approval" ? "accent" : "neutral"}>{r.kind}</Badge>
-                <code className="font-mono text-xs text-fg-2" title={r.hash}>sha256 {short(r.hash)}</code>
-                <Badge tone={statusTone(r.status)}>{r.status}</Badge>
-                {r.txHash ? (
-                  <a
-                    href={`${EXPLORER}${r.txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-xs text-accent underline decoration-line-strong underline-offset-2 hover:decoration-accent"
-                  >
-                    BscScan {short(r.txHash, 8)}
+              <li key={r.id} className="flex items-center gap-3 px-4 py-3">
+                <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} title={r.status} aria-label={r.status} />
+                <Chip className="h-5 px-1.5 text-[11px]">{r.kind}</Chip>
+                <code className="min-w-0 flex-1 truncate font-mono text-xs text-fg-2" title={r.error ?? r.hash}>{short(r.hash)}</code>
+                <span className="num hidden text-[11px] text-subtle sm:inline">{time(r.createdAt)}</span>
+                {r.txHash && (
+                  <a href={`${EXPLORER}${r.txHash}`} target="_blank" rel="noopener noreferrer" aria-label="View on BscScan" title="View on BscScan" className="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-sunken hover:text-fg">
+                    <Icon name="external" className="h-3.5 w-3.5" />
                   </a>
-                ) : null}
-                {r.error ? <span className="truncate text-xs text-warn" title={r.error}>{r.error}</span> : null}
-                <span className="ml-auto flex items-center gap-2 text-xs text-subtle">
-                  {v === "checking" ? (
-                    "Checking…"
-                  ) : v ? (
-                    <span className={v.ok ? "text-up" : "text-down"}>
-                      {v.ok ? (v.onchainMatches ? "Verified onchain" : "Hash verified") : v.error ?? "Mismatch"}
-                    </span>
-                  ) : (
-                    <button onClick={() => verify(r.id)} className="text-accent hover:underline">Verify</button>
-                  )}
-                  <span>{time(r.createdAt)}</span>
-                </span>
+                )}
+                {v === "checking" ? (
+                  <Icon name="refresh" className="h-3.5 w-3.5 animate-spin text-muted" />
+                ) : v ? (
+                  <span title={v.ok ? (v.onchainMatches ? "Verified onchain" : "Hash verified") : v.error ?? "Mismatch"} className={v.ok ? "text-up" : "text-down"}>
+                    <Icon name={v.ok ? "check" : "x"} className="h-4 w-4" />
+                  </span>
+                ) : (
+                  <button onClick={() => verify(r.id)} className="h-7 rounded-full px-2.5 text-[11px] font-medium text-fg-2 hover:bg-sunken hover:text-fg">Verify</button>
+                )}
               </li>
             );
           })}
         </ul>
       )}
-    </Card>
+    </div>
   );
 }
