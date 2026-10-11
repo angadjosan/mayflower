@@ -49,7 +49,7 @@ export class BlueBubblesMessenger implements Messenger {
     try { env = JSON.parse(raw); } catch { /* non-JSON body */ }
     if (res.ok && !env.error && (env.status === undefined || env.status < 400)) return;
     const firstError = raw.slice(0, 500);
-    const chatMissing = /chat.*?(not found|does not exist|doesn't exist)|failed to find chat/is.test(firstError);
+    const chatMissing = /chat[\s\S]{0,80}?(not found|does not exist|doesn't exist)|failed to find chat/i.test(firstError);
     if (!chatMissing) throw new Error(`BlueBubbles /message/text failed ${res.status}: ${firstError}`);
     await postJson(this.bb, '/chat/new', {
       addresses: [to],

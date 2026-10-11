@@ -60,7 +60,7 @@ export class SandboxExecutor implements Executor {
       orderType: 'limit',
       side: 'buy',
       quantity: String(req.qty),
-      price: req.limitPrice.toFixed(Math.max(2, (String(market.priceIncrement || 0.01).split('.')[1] ?? '').length)),
+      price: req.limitPrice.toFixed(Math.max(2, Math.ceil(-Math.log10(market.priceIncrement || 0.01) - 1e-9))),
       outcome: req.side,
       timeInForce: 'good-til-cancel',
       makerOrCancel: false,
