@@ -17,6 +17,7 @@ import type { Market, ResearchReport, Side, TradeProposal, User } from "../types
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
 const EFFORT = (process.env.ANTHROPIC_AGENT_EFFORT || "low") as "low" | "medium" | "high";
 const MAX_TURNS = 10;
+const MIN_EDGE = 0.05;
 const HISTORY = 24;
 
 let client: Anthropic | null = null;
@@ -339,6 +340,10 @@ async function proposeTrade(userId: string, a: { marketId: string; side: Side; a
   const fresh = db.research.filter((r) => r.marketId === m.id && Date.now() - Date.parse(r.createdAt) < 30 * 60_000).at(-1);
   const r: ResearchReport = fresh ?? (await researchAndForecast(m, userId));
   const pSide = a.side === "YES" ? r.estimatedProbability : 1 - r.estimatedProbability;
+  // No edge, no pitch: our estimate must beat the price by MIN_EDGE, or it's a bad bet (and nobody gets called).
+  if (pSide - price < MIN_EDGE) {
+    return { error: `no edge: we estimate ${Math.round(pSide * 100)}% vs price ${Math.round(price * 100)}c. Tell them it's a bad bet, then look for a better one on the same game.` };
+  }
   const costUsd = +(quantity * price).toFixed(2);
   const capped = a.amountUsd > cap;
   const mode = orderModeFor(m);
