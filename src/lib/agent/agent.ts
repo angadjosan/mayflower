@@ -9,6 +9,8 @@ import { approvalUrl } from "../execution";
 import { getPortfolioSummary } from "../risk";
 import { sendToUser } from "../notify";
 import { createLoginLink } from "../auth";
+import { getBalance } from "../exchange";
+import { ensureTestWallet } from "../testWallet";
 import { researchAndForecast, discover, formatProposal } from "./discover";
 import type { Market, ResearchReport, Side, TradeProposal, User } from "../types";
 
@@ -35,7 +37,9 @@ How you work:
 - The risk engine enforces the user's limits. If a requested amount exceeds them, say what the limit is and offer to raise it. Only raise limits with update_profile when the user explicitly asks.
 - Be honest about uncertainty, edge, and whether the market looks fairly priced. No promises of profit. "No trade" is a valid answer.
 - Label simulated/paper orders honestly when the tool says the venue is simulated.
-- If they want trades on their own Gemini account, send a connect_gemini link (get_link). Mayflower never holds funds and can't withdraw.
+- Everything is TESTNET with test money. Gemini (sandbox, $100k test USD) is the primary venue: prefer Gemini contracts and talk about Gemini. Only when Gemini doesn't list the market, use Hyperliquid testnet and say so in one short line (e.g. "this one fills on Hyperliquid testnet from your test wallet").
+- Each user has a Mayflower test wallet with testUSDC for Hyperliquid trades; mention its address/balance if they ask where their money is.
+- If they want trades on their own Gemini sandbox account, send a connect_gemini link (get_link). Mayflower never holds real funds and can't withdraw.
 
 Style: you're texting. Short, casual, plain text, no markdown, no bullet symbols. A few short lines max unless listing a trade.`;
 
@@ -65,7 +69,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "search_markets",
-    description: "Search live prediction-market contracts (Gemini, plus Polymarket/Hyperliquid fallbacks). Use short keywords/tickers (e.g. 'btc', 'eth', 'fed', 'nfl'); try another query if the first finds nothing. Returns ids, prices (0..1 = probability in dollars), expiry and venue. Gemini lists many short-dated crypto price contracts (e.g. 'BTC price today at 4pm').",
+    description: "Search live prediction-market contracts (Gemini first; Hyperliquid testnet outcome markets as fallback). Use short keywords/tickers (e.g. 'btc', 'eth', 'fed', 'nfl'); try another query if the first finds nothing. Returns ids, prices (0..1 = probability in dollars), expiry and venue. Gemini lists many short-dated crypto price contracts (e.g. 'BTC price today at 4pm').",
     input_schema: {
       type: "object",
       properties: { query: { type: "string", description: "Keywords, e.g. 'bitcoin above 83000 today'" }, limit: { type: "number" } },
@@ -205,7 +209,13 @@ async function runTool(userId: string, name: string, input: Input): Promise<unkn
       const db = await load();
       const u = db.users.find((x) => x.id === userId)!;
       const summary = await getPortfolioSummary(userId);
+      const wallet = await ensureTestWallet(userId);
+      const gemini = await getBalance("gemini", userId).catch(() => undefined);
       return {
+        balances: {
+          gemini: gemini ? { availableTestUsd: gemini.availableUsd, account: u.geminiLinked ? "linked" : "shared sandbox" } : "unavailable",
+          testWallet: { address: wallet.address, testUsdc: wallet.usdc, venue: "Hyperliquid testnet" },
+        },
         limits: u.limits, paused: u.paused,
         portfolio: { atRiskUsd: summary.atRiskUsd, availableUsd: summary.availableUsd, unrealizedPnlUsd: summary.unrealizedPnlUsd, realizedPnlUsd: summary.realizedPnlUsd, explanation: summary.exposureExplanation },
         openPositions: db.positions.filter((p) => p.userId === userId && p.status === "open").map((p) => ({
@@ -305,6 +315,7 @@ const SLOW = new Set(["research_market", "find_opportunities", "propose_trade"])
 
 /** Run one conversational turn. `text` must already be stored as the latest user message. */
 export async function runAgent(userId: string, text: string): Promise<string> {
+  const wallet = await ensureTestWallet(userId);
   const db = await load();
   const user = db.users.find((u) => u.id === userId)!;
   const theses = db.theses.filter((t) => t.userId === userId);
@@ -319,6 +330,7 @@ export async function runAgent(userId: string, text: string): Promise<string> {
 
   const context = `Today: ${new Date().toISOString()}. User profile: ${JSON.stringify({
     name: user.name, onboarded: user.onboarded, paused: user.paused, limits: user.limits,
+    testWallet: { address: wallet.address, testUsdc: wallet.usdc }, geminiAccount: user.geminiLinked ? "linked" : "shared sandbox",
     interests: theses.map((t) => ({ topic: t.topic, belief: t.belief })),
   })}`;
 

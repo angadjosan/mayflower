@@ -13,7 +13,7 @@ const CLOB_URL = (process.env.POLYMARKET_CLOB_URL || "https://clob.polymarket.co
 const PRIVATE_KEY = process.env.POLYMARKET_PRIVATE_KEY;
 const LIVE_OPT_IN = process.env.POLYMARKET_LIVE_TRADING === "1";
 // Discovery is public and on by default; set POLYMARKET_ENABLED=0 to trade Gemini only.
-export const polymarketEnabled = process.env.POLYMARKET_ENABLED !== "0";
+export const polymarketEnabled = process.env.POLYMARKET_ENABLED === "1"; // off: Mayflower is Gemini-first, Hyperliquid testnet fallback
 export const polymarketMode: "live" | "simulated" = polymarketEnabled && PRIVATE_KEY && LIVE_OPT_IN ? "live" : "simulated";
 
 // 0 = EOA (key holds the USDC), 1 = Polymarket email/Magic proxy, 2 = browser-wallet Gnosis Safe proxy.
