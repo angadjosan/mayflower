@@ -1,0 +1,18 @@
+{
+  "name": "@mayflower/agents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@google/genai": "^2.0.0",
+    "@mayflower/context": "*",
+    "@mayflower/gemini-markets": "*",
+    "@mayflower/risk": "*",
+    "@mayflower/shared": "*",
+    "zod": "^3.24.0",
+    "zod-to-json-schema": "^3.24.0"
+  }
+}

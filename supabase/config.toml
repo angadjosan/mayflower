@@ -1,0 +1,4 @@
+# Minimal Supabase CLI config. `supabase init` would generate a fuller one.
+project_id = "mayflower"
+[db]
+major_version = 15
