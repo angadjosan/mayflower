@@ -1,6 +1,6 @@
 // Create or update the Mayflower ElevenLabs voice agent and its webhook tools.
 // Run: APP_URL=https://<public app> npx tsx scripts/voice-agent.mts   (reads ELEVENLABS_API_KEY, ELEVENLABS_TOOL_SECRET, ELEVENLABS_AGENT_ID)
-import { voiceAgentConfig, VOICE_GREETING_PLACEHOLDER, VOICE_SECRET_HEADER } from "../src/lib/voice.ts";
+import { voiceAgentConfig, VOICE_SECRET_HEADER } from "../src/lib/voice.ts";
 
 const API = "https://api.elevenlabs.io/v1/convai";
 const key = process.env.ELEVENLABS_API_KEY;
@@ -30,8 +30,8 @@ const agent = {
     agent: {
       first_message: cfg.first_message,
       language: "en",
-      // Defaults for calls that don't set them (inbound, call links); settlement calls fill call_reason/call_opener/result_summary.
-      dynamic_variables: { dynamic_variable_placeholders: { call_token: "", proposal_id: "", greeting: VOICE_GREETING_PLACEHOLDER, call_reason: "", call_opener: "", result_summary: "" } },
+      // Placeholders only fill dashboard tests: real calls must pass every one of these (callVars in calls.ts) or ElevenLabs drops them.
+      dynamic_variables: { dynamic_variable_placeholders: { call_token: "", proposal_id: "", call_reason: "", call_opener: "", result_summary: "" } },
       prompt: {
         prompt: cfg.system_prompt, llm: process.env.ELEVENLABS_AGENT_LLM || "gpt-4.1", temperature: 0.6, tool_ids: toolIds,
         // Hang up when done, and on a voicemail greeting, so unanswered rings don't burn minutes.

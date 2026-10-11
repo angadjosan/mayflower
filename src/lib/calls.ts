@@ -63,9 +63,8 @@ export async function callContext(userId: string, proposalId?: string): Promise<
 
 /** Ring the user through Twilio when we can; returns false when they need a link instead. */
 export async function ringUser(userId: string, proposalId?: string): Promise<boolean> {
-  // main: open with the pitch via the {{greeting}} variable.
   const { greeting } = await callContext(userId, proposalId);
-  return (await placeCall(userId, { proposal_id: proposalId ?? "", greeting })).ok;
+  return ringWithOpener(userId, { proposal_id: proposalId ?? "" }, `hey, it's mayflower. ${greeting}`);
 }
 
 /** Why we're calling about a settled position: the result, the line to open with, and a one-line summary for the agent. */
@@ -83,10 +82,23 @@ export async function canRing(userId: string): Promise<boolean> {
  * If the live agent doesn't allow the first-message override, retry without it: the briefing "say" line carries the opener.
  */
 export async function ringUserAbout(userId: string, about: CallAbout): Promise<boolean> {
-  const vars = { proposal_id: "", greeting: about.opener, call_reason: `settlement_${about.kind}`, call_opener: about.opener, result_summary: about.summary };
-  const first = await placeCall(userId, vars, about.opener);
+  const vars = { proposal_id: "", call_reason: `settlement_${about.kind}`, call_opener: about.opener, result_summary: about.summary };
+  return ringWithOpener(userId, vars, about.opener);
+}
+
+/** Ring opening with `opener` (first-message override); if the agent refuses the override, ring with its default first message. */
+async function ringWithOpener(userId: string, vars: Record<string, string>, opener: string): Promise<boolean> {
+  const first = await placeCall(userId, vars, opener);
   if (first.ok || !/override/i.test(first.message ?? "")) return first.ok;
   return (await placeCall(userId, vars)).ok;
+}
+
+/**
+ * Every dynamic variable the agent's tools read, filled for one call. ElevenLabs drops the call on pickup if any is
+ * missing (agent placeholders don't apply to real calls), so every call passes all of them; "" means unset.
+ */
+export function callVars(userId: string, vars: Record<string, string> = {}): Record<string, string> {
+  return { proposal_id: "", call_reason: "", call_opener: "", result_summary: "", call_token: callToken(userId), ...vars };
 }
 
 /** The exact body POSTed to ElevenLabs' Twilio outbound-call endpoint (exported so tests can show it without dialing). */
@@ -96,7 +108,7 @@ export function outboundCallPayload(userId: string, to: string, vars: Record<str
     agent_phone_number_id: process.env.ELEVENLABS_PHONE_NUMBER_ID,
     to_number: to,
     conversation_initiation_client_data: {
-      dynamic_variables: { call_token: callToken(userId), ...vars },
+      dynamic_variables: callVars(userId, vars),
       ...(firstMessage ? { conversation_config_override: { agent: { first_message: firstMessage } } } : {}),
     },
   };
