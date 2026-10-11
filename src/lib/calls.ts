@@ -63,33 +63,69 @@ export async function callContext(userId: string, proposalId?: string): Promise<
 
 /** Ring the user through Twilio when we can; returns false when they need a link instead. */
 export async function ringUser(userId: string, proposalId?: string): Promise<boolean> {
+  return (await placeCall(userId, { proposal_id: proposalId ?? "" })).ok;
+}
+
+/** Why we're calling about a settled position: the result, the line to open with, and a one-line summary for the agent. */
+export interface CallAbout { kind: "win" | "loss"; summary: string; opener: string }
+
+/** Whether ringing (not just a call link) is possible for this user right now. */
+export async function canRing(userId: string): Promise<boolean> {
+  const user = (await load()).users.find((u) => u.id === userId);
+  return callsEnabled() && Boolean(process.env.ELEVENLABS_PHONE_NUMBER_ID) && Boolean(normalizePhone(user?.handle));
+}
+
+/**
+ * Ring the user about a settled position. The agent opens with `about.opener` (first-message override) and gets
+ * call_reason / result_summary as dynamic variables, which the briefing tool passes back so the agent knows the vibe.
+ * If the live agent doesn't allow the first-message override, retry without it: the briefing "say" line carries the opener.
+ */
+export async function ringUserAbout(userId: string, about: CallAbout): Promise<boolean> {
+  const vars = { proposal_id: "", call_reason: `settlement_${about.kind}`, call_opener: about.opener, result_summary: about.summary };
+  const first = await placeCall(userId, vars, about.opener);
+  if (first.ok || !/override/i.test(first.message ?? "")) return first.ok;
+  return (await placeCall(userId, vars)).ok;
+}
+
+/** The exact body POSTed to ElevenLabs' Twilio outbound-call endpoint (exported so tests can show it without dialing). */
+export function outboundCallPayload(userId: string, to: string, vars: Record<string, string>, firstMessage?: string) {
+  return {
+    agent_id: process.env.ELEVENLABS_AGENT_ID,
+    agent_phone_number_id: process.env.ELEVENLABS_PHONE_NUMBER_ID,
+    to_number: to,
+    conversation_initiation_client_data: {
+      dynamic_variables: { call_token: callToken(userId), ...vars },
+      ...(firstMessage ? { conversation_config_override: { agent: { first_message: firstMessage } } } : {}),
+    },
+  };
+}
+
+async function placeCall(userId: string, vars: Record<string, string>, firstMessage?: string): Promise<{ ok: boolean; message?: string }> {
   const phoneNumberId = process.env.ELEVENLABS_PHONE_NUMBER_ID;
   const user = (await load()).users.find((u) => u.id === userId);
   const to = normalizePhone(user?.handle);
-  if (!callsEnabled() || !phoneNumberId || !to) return false;
+  if (!callsEnabled() || !phoneNumberId || !to) return { ok: false };
   try {
     const res = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
       method: "POST",
       headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY!, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agent_id: process.env.ELEVENLABS_AGENT_ID,
-        agent_phone_number_id: phoneNumberId,
-        to_number: to,
-        conversation_initiation_client_data: { dynamic_variables: { call_token: callToken(userId), proposal_id: proposalId ?? "" } },
-      }),
+      body: JSON.stringify(outboundCallPayload(userId, to, vars, firstMessage)),
       signal: AbortSignal.timeout(20_000),
     });
     // A 200 can still carry success:false (e.g. Twilio refusing the number), so check the body.
     const body = (await res.json().catch(() => ({}))) as { success?: boolean; message?: string; conversation_id?: string };
     if (res.ok && body.success === true) {
       await trackCall(userId, body.conversation_id);
-      return true;
+      return { ok: true };
     }
-    console.error("[calls] outbound call failed", res.status, String(body.message ?? "").slice(0, 300));
+    // FastAPI-style errors put the reason in `detail`.
+    const message = String(body.message ?? JSON.stringify((body as { detail?: unknown }).detail ?? "")).slice(0, 300);
+    console.error("[calls] outbound call failed", res.status, message);
+    return { ok: false, message };
   } catch (e) {
     console.error("[calls] outbound call error", e);
   }
-  return false;
+  return { ok: false };
 }
 
 /** Remember a call so its transcript lands in the chat history once it ends. */

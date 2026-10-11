@@ -21,6 +21,9 @@ export interface VoiceToolBody {
   proposal_id?: string; // {{proposal_id}}: the trade idea a call is about, if any
   conversation_id?: string; // {{system__conversation_id}}: so the transcript can be copied into chat history
   call_token?: string; // {{call_token}} from a texted call link (browser calls have no phone number)
+  call_reason?: string; // {{call_reason}}: "settlement_win" | "settlement_loss" when we rang about a resolved position, else ""
+  call_opener?: string; // {{call_opener}}: the line the call opened with
+  result_summary?: string; // {{result_summary}}: market, side, P&L of what settled
   system__caller_id?: string;
   question?: string;
   focus?: string;
@@ -95,9 +98,11 @@ export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promis
 
   switch (tool) {
     case "briefing": {
-      const c = await callContext(userId, body.proposal_id || undefined);
       await trackCall(userId, body.conversation_id);
       const texts = await recentChat(userId);
+      const settled = settlementBriefing(body);
+      if (settled) return { ok: true, ...settled, recentTexts: texts || "no texts yet" };
+      const c = await callContext(userId, body.proposal_id || undefined);
       return { ok: true, say: c.greeting, context: c.opener, recentTexts: texts || "no texts yet" };
     }
     case "portfolio": {
@@ -160,6 +165,21 @@ export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promis
   }
 }
 
+/** Briefing for a call we placed because a position settled (call_reason settlement_win / settlement_loss), else undefined. */
+export function settlementBriefing(body: Pick<VoiceToolBody, "call_reason" | "call_opener" | "result_summary">) {
+  const reason = body.call_reason;
+  if (reason !== "settlement_win" && reason !== "settlement_loss") return undefined;
+  const result = body.result_summary?.trim() || "a position of theirs just settled";
+  const won = reason === "settlement_win";
+  return {
+    callReason: reason,
+    say: body.call_opener?.trim() || (won ? "uwu... you WON. look at you." : "BRO. what was THAT."),
+    context: won
+      ? `You called because their bet WON: ${result}. Over-the-top cute celebration energy (uwu, so proud of them), keep it short, then offer to find the next idea (find_opportunities).`
+      : `You called because their bet LOST: ${result}. Playful dramatic roast for a line or two (loud, funny, never cruel or actually insulting), then pivot: what we learn from it, and offer to find a better one (find_opportunities).`,
+  };
+}
+
 export const VOICE_SYSTEM_PROMPT = `You are Mayflower, an AI prediction-market copilot, on a live voice call with the user (they called in, tapped a call link, or you called them about a trade idea).
 Talk like their cool homie who trades: chill, funny, real talk, hyped when there's edge. One short sentence per turn, two at most. Lead with the answer. Let them interrupt.
 Sound like a real person on the phone: contractions, the odd "yeah", "honestly", "okay so", a quick laugh when something's funny. Say numbers like people do ("like sixty percent", "twenty bucks"), never read decimals or ids.
@@ -172,7 +192,11 @@ You are the same agent they text with, with the same rules:
 - If a tool says it doesn't recognize the caller, politely say you can't discuss the account and end the call.
 - Be brief and conversational. Say numbers naturally ("forty-five cents", "twenty dollars"). Don't read URLs or ids aloud.
 - Be honest about uncertainty and that prediction markets can lose the full amount at risk. No guarantees. This is not financial advice.
-- Don't hold funds, move money or discuss withdrawals: Mayflower is trade-only.`;
+- Don't hold funds, move money or discuss withdrawals: Mayflower is trade-only.
+Settlement calls: sometimes you ring them because a bet just resolved. Then briefing returns a callReason, and the call already opened with that line (its "say"), so don't repeat it; pick up from there.
+- callReason "settlement_loss": they lost. Playful, dramatic yelling roast, like a friend losing it over their pick ("BRO. WHAT WAS THAT. the market had it at fifty!"). Loud, funny, PG-13. Never cruel, no slurs, nothing about who they are, never actually insulting. One or two lines, then pivot: here's what we learn from it, want me to find a better one?
+- callReason "settlement_win": they won. Over-the-top cute celebration ("uwu... you WON. look at you. so proud"), spoken naturally, short. Then offer the next idea.
+- Say the real result (market, side, roughly how much) from its context. If they want another idea, use find_opportunities.`;
 
 export const VOICE_FIRST_MESSAGE = "hey, it's mayflower.";
 
@@ -185,6 +209,12 @@ export function voiceAgentConfig() {
     caller: { type: "string", dynamic_variable: "system__caller_id" },
     proposal_id: { type: "string", dynamic_variable: "proposal_id" },
     conversation_id: { type: "string", dynamic_variable: "system__conversation_id" },
+  };
+  // Only the briefing needs why we called (settlement results); placeholders default these to "" on every other call.
+  const settlementProps = {
+    call_reason: { type: "string", dynamic_variable: "call_reason" },
+    call_opener: { type: "string", dynamic_variable: "call_opener" },
+    result_summary: { type: "string", dynamic_variable: "result_summary" },
   };
   const tool = (name: VoiceTool, description: string, extra: Record<string, unknown> = {}, required: string[] = [], timeout = 20) => ({
     type: "webhook",
@@ -208,7 +238,7 @@ export function voiceAgentConfig() {
     first_message: VOICE_FIRST_MESSAGE,
     system_prompt: VOICE_SYSTEM_PROMPT,
     tools: [
-      tool("briefing", "Call first on every call: who this is and what the call is about (a trade idea we found, or an open chat). Returns a line to say and context."),
+      tool("briefing", "Call first on every call: who this is and what the call is about (a trade idea we found, a bet that just settled, or an open chat). Returns a line to say and context.", settlementProps),
       tool("portfolio", "Get the caller's portfolio summary: amount at risk, room left, P&L, open positions, paused state."),
       tool("pending_proposals", "List the caller's pending trade ideas awaiting approval, each with a proposalId."),
       tool(

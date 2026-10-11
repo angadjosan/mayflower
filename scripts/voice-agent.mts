@@ -30,7 +30,8 @@ const agent = {
     agent: {
       first_message: cfg.first_message,
       language: "en",
-      dynamic_variables: { dynamic_variable_placeholders: { call_token: "", proposal_id: "" } },
+      // Defaults for calls that don't set them (inbound, call links); settlement calls fill call_reason/call_opener/result_summary.
+      dynamic_variables: { dynamic_variable_placeholders: { call_token: "", proposal_id: "", call_reason: "", call_opener: "", result_summary: "" } },
       prompt: {
         prompt: cfg.system_prompt, llm: process.env.ELEVENLABS_AGENT_LLM || "gpt-4.1-mini", temperature: 0.6, tool_ids: toolIds,
         // Hang up when done, and on a voicemail greeting, so unanswered rings don't burn minutes.
@@ -45,7 +46,11 @@ const agent = {
     conversation: { max_duration_seconds: 180 },
   },
   // Public so a texted link can open the talk page; tools still need a valid call_token or caller id.
-  platform_settings: { auth: { enable_auth: false }, call_limits: { agent_concurrency_limit: 3, daily_limit: 60 } },
+  // first_message override: settlement calls open with their own line (ringUserAbout); every other call keeps first_message.
+  platform_settings: {
+    auth: { enable_auth: false }, call_limits: { agent_concurrency_limit: 3, daily_limit: 60 },
+    overrides: { conversation_config_override: { agent: { first_message: true }, conversation: { text_only: true } } },
+  },
 };
 const id = process.env.ELEVENLABS_AGENT_ID;
 const out = id ? (await api("PATCH", `/agents/${id}`, agent), { agent_id: id }) : await api("POST", "/agents/create", agent);

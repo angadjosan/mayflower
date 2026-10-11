@@ -226,6 +226,12 @@ export interface Position {
   updatedAt: string;
   thesisCheckedAt?: string; // thesis-watch loop: last news check
   thesisStatus?: "intact" | "weakened" | "broken"; // last judged status vs the original thesis
+  // Set once when the market resolves and the position is paid out (see settlement.ts).
+  settledAt?: string;
+  settledOutcome?: Side; // which side the market resolved to
+  outcome?: "won" | "lost"; // did this position's side win
+  settlementPayoutUsd?: number; // $1/contract if won, else $0
+  settlementSource?: string; // how the result was determined (exchange result vs inferred from final price)
 }
 
 export interface ChatMessage {

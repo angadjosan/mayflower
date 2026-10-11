@@ -4,11 +4,12 @@ import { getMarket } from "./exchange";
 import type { ForecastScore, Market, TradeProposal } from "./types";
 
 const BASE_URL = (process.env.GEMINI_EXCHANGE_BASE_URL || "https://api.sandbox.gemini.com").replace(/\/$/, "");
+const PROD_URL = "https://api.gemini.com";
 
 /** Stored score plus how the outcome was determined (extra fields are fine in the JSON store). */
 export type ScoredForecast = ForecastScore & { inferred?: boolean; resolutionSource?: string; side?: TradeProposal["side"] };
 
-type Resolution = { outcome: 0 | 1; inferred: boolean; source: string };
+export type Resolution = { outcome: 0 | 1; inferred: boolean; source: string };
 
 const mid = (m: Market) =>
   m.yesBid != null && m.yesAsk != null ? (m.yesBid + m.yesAsk) / 2 : m.lastPrice ?? m.yesAsk ?? m.yesBid;
@@ -35,26 +36,41 @@ function explicitOutcome(c: any): 0 | 1 | undefined {
   return undefined;
 }
 
-/** Try the public event endpoint (GET /v1/prediction-markets/events/{ticker}); settled events are often no longer listed. */
+/**
+ * Try the public event endpoint (GET /v1/prediction-markets/events/{ticker}); settled events are often no longer listed.
+ * Paper-only markets come from production Gemini, so fall back to it when the sandbox doesn't know the event.
+ */
 async function fetchContract(marketId: string): Promise<any | undefined> {
   const ticker = marketId.match(/^GEMI-([A-Z0-9]+?\d{10})-/)?.[1];
   if (!ticker) return undefined;
-  try {
-    const res = await fetch(`${BASE_URL}/v1/prediction-markets/events/${ticker}`, { signal: AbortSignal.timeout(8000), cache: "no-store" });
-    if (!res.ok) return undefined;
-    const ev = await res.json();
-    return (ev?.contracts ?? []).find((c: any) => c.instrumentSymbol === marketId);
-  } catch {
-    return undefined;
+  for (const base of [...new Set([BASE_URL, PROD_URL])]) {
+    try {
+      const res = await fetch(`${base}/v1/prediction-markets/events/${ticker}`, { signal: AbortSignal.timeout(8000), cache: "no-store" });
+      if (!res.ok) continue;
+      const ev = await res.json();
+      const c = (ev?.contracts ?? []).find((c: any) => c.instrumentSymbol === marketId);
+      if (c) return c;
+    } catch { /* try the next base */ }
   }
+  return undefined;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-async function resolve(marketId: string, snapshot: Market): Promise<Resolution | undefined> {
+/**
+ * How a market resolved, or undefined while it's still open or the result isn't known yet (never a guess).
+ * Exchange result fields first; else a final price pinned at >=0.99 / <=0.01 once the market is expired/settled/closed.
+ * Hyperliquid settled outcomes come back from getMarket as status "settled" with lastPrice = YES settle value.
+ */
+export async function resolveMarket(marketId: string, snapshot: Market): Promise<Resolution | undefined> {
   if (snapshot.source === "mock" || marketId.startsWith("MOCK-")) return undefined; // mock markets never resolve
   const expired = snapshot.expiresAt ? Date.parse(snapshot.expiresAt) < Date.now() : false;
   const live = await getMarket(marketId).catch(() => undefined);
   if (live && live.status === "open" && !expired) return undefined;
+  // Hyperliquid settledOutcome / Polymarket outcomePrices: the venue's own result, carried in lastPrice.
+  if (live && (live.status === "settled" || live.status === "closed") && (live.source === "hyperliquid" || live.source === "polymarket") && live.lastPrice != null) {
+    if (live.lastPrice >= 0.99) return { outcome: 1, inferred: false, source: `${live.source} settlement` };
+    if (live.lastPrice <= 0.01) return { outcome: 0, inferred: false, source: `${live.source} settlement` };
+  }
 
   const raw = await fetchContract(marketId);
   if (raw) {
@@ -93,7 +109,7 @@ export async function scoreSettledMarkets(): Promise<number> {
 
   const fresh: ScoredForecast[] = [];
   for (const [marketId, props] of byMarket) {
-    const r = await resolve(marketId, props[0].market);
+    const r = await resolveMarket(marketId, props[0].market);
     if (!r) continue;
     for (const p of props) {
       const research = db.research.find((x) => x.id === p.researchId);
