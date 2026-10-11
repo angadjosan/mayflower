@@ -114,7 +114,7 @@ export function getPortfolioSummary(userId: string): {
   }
 
   const lastOrder = [...db.orders].reverse().find((o) => o.userId === userId);
-  const mode = lastOrder?.mode ?? (process.env.GEMINI_API_KEY ? "sandbox" : "simulated");
+  const mode = lastOrder?.mode ?? (process.env.GEMINI_EXCHANGE_API_KEY && process.env.GEMINI_EXCHANGE_API_SECRET ? "sandbox" : "simulated");
 
   const top = topicExposure[0];
   const exposureExplanation = open.length === 0
