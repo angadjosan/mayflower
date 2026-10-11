@@ -1,17 +1,33 @@
 {
-  "name": "web",
+  "name": "@mayflower/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "trigger:dev": "npx trigger.dev@latest dev",
+    "trigger:deploy": "npx trigger.dev@latest deploy"
   },
   "dependencies": {
+    "@mayflower/agents": "*",
+    "@mayflower/context": "*",
+    "@mayflower/core": "*",
+    "@mayflower/db": "*",
+    "@mayflower/gemini-markets": "*",
+    "@mayflower/messaging": "*",
+    "@mayflower/risk": "*",
+    "@mayflower/shared": "*",
+    "@supabase/ssr": "^0.12.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "@trigger.dev/sdk": "^4.0.0",
     "next": "16.4.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "recharts": "^3.0.0",
+    "server-only": "^0.0.1",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
