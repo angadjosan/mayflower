@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   if (process.env.NODE_ENV === "production" || !isLocalRequest(req.headers)) return NextResponse.json({ error: "not found" }, { status: 404 });
   await tx((db) => {
-    for (const k of Object.keys(db) as (keyof DB)[]) db[k] = [];
+    for (const k of Object.keys(db) as (keyof DB)[]) (db as unknown as Record<string, unknown>)[k] = k === "loopState" ? {} : [];
   });
   return NextResponse.json({ ok: true });
 }

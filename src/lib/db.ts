@@ -18,7 +18,7 @@ import type {
   User, UserThesis, Market, ResearchReport, TradeProposal, Order, Position,
   ChatMessage, MonitorEvent, AuditEvent, PortfolioSnapshot,
   Group, Contest, ContestEntry, GroupPick,
-  ConnectedSource, ContextItem, AuditReceipt, ForecastScore, LoginToken,
+  ConnectedSource, ContextItem, AuditReceipt, ForecastScore, LoginToken, LoopState,
 } from "./types";
 
 if (typeof window !== "undefined") throw new Error("lib/db is server-only");
@@ -44,6 +44,7 @@ export interface DB {
   auditReceipts: AuditReceipt[];
   forecastScores: ForecastScore[];
   loginTokens: LoginToken[];
+  loopState: Record<string, LoopState>; // background research loops (see src/lib/loops/tick.ts)
 }
 
 const empty = (): DB => ({
@@ -51,6 +52,7 @@ const empty = (): DB => ({
   positions: [], messages: [], monitorEvents: [], audit: [], snapshots: [],
   groups: [], contests: [], contestEntries: [], groupPicks: [],
   connectedSources: [], contextItems: [], auditReceipts: [], forecastScores: [], loginTokens: [],
+  loopState: {},
 });
 const normalize = (raw: unknown): DB => ({ ...empty(), ...((raw && typeof raw === "object" ? raw : {}) as Partial<DB>) });
 
