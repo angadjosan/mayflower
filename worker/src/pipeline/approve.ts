@@ -29,7 +29,7 @@ export async function approve(app: App, phone: string, code: string): Promise<st
   if (market.status === 'closed') return fail(app, p.id, 'the market has closed');
   const ask = q ? (p.side === 'yes' ? q.yesAsk : q.noAsk) : null;
   const quotedAt = q ? Date.parse(q.ts) : NaN;
-  if (ask == null || !Number.isFinite(quotedAt) || Date.now() - quotedAt > 90_000) return fail(app, p.id, 'no live price right now');
+  if (ask == null || !Number.isFinite(quotedAt) || quotedAt > Date.now() + 5_000 || Date.now() - quotedAt > 90_000) return fail(app, p.id, 'no live price right now');
   if (ask > Number(p.limit_price) + 1e-9) return fail(app, p.id, `the price moved from ${pct(p.limit_price)} to ${pct(ask)}; text me again for a fresh look`);
   const executor: Executor = market.sandboxListed && app.executor.mode === 'sandbox' ? app.executor : app.sim;
   const req = { proposalId: p.id, symbol: p.instrument_symbol, side: p.side, qty: Number(p.qty), limitPrice: Number(p.limit_price), clientOrderId: p.id };

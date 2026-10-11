@@ -55,12 +55,15 @@ export class SandboxExecutor implements Executor {
 
   async place(req: OrderRequest, market: Market): Promise<OrderResult> {
     if (!market.sandboxListed) throw new Error('not listed on sandbox');
+    if (!(req.limitPrice > 0 && req.limitPrice < 1) || !(Number.isFinite(req.qty) && req.qty > 0)) {
+      return { status: 'rejected', exchangeOrderId: null, filledQty: 0, avgPrice: null, error: `invalid order terms qty=${req.qty} price=${req.limitPrice}`, simulated: false, raw: null };
+    }
     const body = {
       symbol: market.symbol,
       orderType: 'limit',
       side: 'buy',
       quantity: String(req.qty),
-      price: req.limitPrice.toFixed(Math.max(2, Math.ceil(-Math.log10(market.priceIncrement || 0.01) - 1e-9))),
+      price: req.limitPrice.toFixed(Math.max(2, tickDecimals(market.priceIncrement))),
       outcome: req.side,
       timeInForce: 'good-til-cancel',
       makerOrCancel: false,
@@ -111,4 +114,12 @@ export class SandboxExecutor implements Executor {
     else status = filled > 0 ? 'partially_filled' : 'unknown';
     return { status, exchangeOrderId: String(o.orderId), filledQty: filled, avgPrice: avg, error: null, simulated: false, raw: o };
   }
+}
+
+/** Decimal places of a tick size (0.01 → 2, 0.025 → 3); falls back to cents for anything invalid. */
+function tickDecimals(inc: number): number {
+  if (!(inc > 0) || !Number.isFinite(inc)) return 2;
+  let d = 0;
+  while (d < 10 && Math.abs(Math.round(inc * 10 ** d) - inc * 10 ** d) > 1e-9) d++;
+  return d;
 }
