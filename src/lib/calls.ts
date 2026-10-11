@@ -56,14 +56,16 @@ export async function callContext(userId: string, proposalId?: string): Promise<
   }
   const market = idea.market.title && idea.market.title !== idea.market.eventTitle ? `${idea.market.eventTitle}, ${idea.market.title}` : idea.market.eventTitle;
   return {
-    greeting: `yo, that ${idea.market.eventTitle} idea actually looks decent. want the quick rundown?`,
+    greeting: `that ${idea.market.eventTitle} idea actually looks decent. want the quick rundown?`,
     opener: `You are calling about a trade that looks good: ${market}, ${idea.side} at up to ${Math.round(idea.limitPrice * 100)} cents, max loss $${idea.costUsd.toFixed(0)}. Our estimate ${Math.round(idea.estimatedProbability * 100)}% vs the market's ${Math.round(idea.marketProbability * 100)}%. Walk them through why, answer questions, and if they want in, send the approval link (proposalId ${idea.id}).`,
   };
 }
 
 /** Ring the user through Twilio when we can; returns false when they need a link instead. */
 export async function ringUser(userId: string, proposalId?: string): Promise<boolean> {
-  return (await placeCall(userId, { proposal_id: proposalId ?? "" })).ok;
+  // main: open with the pitch via the {{greeting}} variable.
+  const { greeting } = await callContext(userId, proposalId);
+  return (await placeCall(userId, { proposal_id: proposalId ?? "", greeting })).ok;
 }
 
 /** Why we're calling about a settled position: the result, the line to open with, and a one-line summary for the agent. */
@@ -81,7 +83,7 @@ export async function canRing(userId: string): Promise<boolean> {
  * If the live agent doesn't allow the first-message override, retry without it: the briefing "say" line carries the opener.
  */
 export async function ringUserAbout(userId: string, about: CallAbout): Promise<boolean> {
-  const vars = { proposal_id: "", call_reason: `settlement_${about.kind}`, call_opener: about.opener, result_summary: about.summary };
+  const vars = { proposal_id: "", greeting: about.opener, call_reason: `settlement_${about.kind}`, call_opener: about.opener, result_summary: about.summary };
   const first = await placeCall(userId, vars, about.opener);
   if (first.ok || !/override/i.test(first.message ?? "")) return first.ok;
   return (await placeCall(userId, vars)).ok;
