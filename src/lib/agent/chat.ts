@@ -252,7 +252,7 @@ export async function handleMessage(userId: string, text: string, channel: "imes
       if (!wasOnboarded && after.onboarded) {
         const L = after.limits;
         const ideas = await proposalsText(userId);
-        return `got it\nup to $${L.budgetUsd} total, $${L.maxPerTradeUsd} max a trade, ${L.riskStyle}\nok here's what i found\n${ideas}`;
+        return `got it\nup to $${L.budgetUsd} total, $${L.maxPerTradeUsd} max a trade, ${L.riskStyle}\n${ideas === NO_TRADE ? "" : "ok here's what i found\n"}${ideas}`;
       }
       if (!after.onboarded) {
         const hasInterest = (await load()).theses.some((t) => t.userId === userId);
