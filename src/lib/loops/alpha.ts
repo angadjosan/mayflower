@@ -6,6 +6,7 @@ import { listMarkets, getBalance, venueOf, orderModeFor } from "../exchange";
 import { searchEvidence, readPages, pagesBlock } from "../research";
 import { approvalUrl } from "../execution";
 import { researchAndForecast, buildOpenProposal, matchesTopic } from "../agent/discover";
+import { personalizeReport, type PersonalView } from "../agent/personal";
 import { llmJSON, auditLoop, label, notify, pct, textable, firstSentence } from "./shared";
 import type { Citation, Market, ResearchReport, TradeProposal, User } from "../types";
 
@@ -200,7 +201,7 @@ async function pitchUser(
   const busy = busyMarketIds(db, user.id);
   const pitched = new Set(user.alphaMarketIds ?? []);
   const reasons: string[] = [];
-  const options: { c: (typeof researched)[number]; proposal: TradeProposal }[] = [];
+  const options: { c: (typeof researched)[number]; proposal: TradeProposal; view?: PersonalView }[] = [];
   for (const c of researched) {
     if (busy.has(c.market.id)) { reasons.push(`${c.market.id}: already pending/open`); continue; }
     if (pitched.has(c.market.id)) { reasons.push(`${c.market.id}: already pitched`); continue; }
@@ -208,14 +209,19 @@ async function pitchUser(
     const availableUsd = await getBalance(venueOf(c.market), user.id).then((b) => b.availableUsd).catch(() => Infinity);
     const theses = db.theses.filter((t) => t.userId === user.id);
     const discovery = theses.some((t) => matchesTopic(c.market, t.topic)) ? "personalized" : "general";
-    const built = buildOpenProposal({ db, user, market: c.market, report: c.report, discovery, theses, availableUsd });
+    // The user's own context (memories, Notion/Slack, texts) moves the valuation itself — bounded and explained.
+    const { report, view } = await personalizeReport(user, c.market, c.report);
+    const built = buildOpenProposal({ db, user, market: c.market, report, discovery: view ? "personalized" : discovery, theses, availableUsd });
     if ("blockedReason" in built) { reasons.push(`${c.market.id}: ${built.blockedReason}`); continue; }
-    options.push({ c, proposal: { ...built.proposal, loop: "alpha", lastResearchedAt: c.report.createdAt } });
+    options.push({ c: { ...c, report }, proposal: { ...built.proposal, loop: "alpha", lastResearchedAt: report.createdAt }, view });
   }
   if (!options.length) return { reason: reasons.join(" | ") || "no candidates" };
   // Prefer the user's own interests, then the biggest edge.
-  options.sort((a, b) => Number(b.proposal.discovery === "personalized") - Number(a.proposal.discovery === "personalized") || b.proposal.edge - a.proposal.edge);
-  const { c, proposal } = options[0];
+  // Prefer ideas the user's own context informs, then their interests, then the biggest edge.
+  options.sort((a, b) => Number(!!b.view) - Number(!!a.view)
+    || Number(b.proposal.discovery === "personalized") - Number(a.proposal.discovery === "personalized")
+    || b.proposal.edge - a.proposal.edge);
+  const { c, proposal, view } = options[0];
 
   // Claim the throttle + market atomically, so overlapping runs can't double-text.
   const claimed = await tx((d) => {
@@ -239,6 +245,7 @@ async function pitchUser(
     `Something just moved: ${c.development.headline}${src}.`,
     `${label(c.market)}${where}: buy ${proposal.side} at $${proposal.limitPrice.toFixed(2)}. Market says ${pct(proposal.marketProbability)}, I'm at ${pct(proposal.estimatedProbability)}.`,
     `Why: ${firstSentence(c.report.summary) || c.why}`,
+    ...(view ? [`Your context: ${view.why}${view.used[0] ? ` ("${view.used[0].quote}")` : ""}. Public evidence alone says ${pct(proposal.side === "YES" ? view.publicP : 1 - view.publicP)}.`] : []),
     `Risk $${proposal.costUsd.toFixed(2)} (${proposal.quantity} contracts), that's the most you'd lose.`,
     `Approve: ${approvalUrl(proposal)}`,
   ].join("\n");
