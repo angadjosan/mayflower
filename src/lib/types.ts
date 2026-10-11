@@ -22,6 +22,55 @@ export interface User {
   geminiLinked: boolean; // MVP: shared sandbox account; true once user "links"
   lastAlphaAt?: string; // last unsolicited alpha-scan text (throttle)
   alphaMarketIds?: string[]; // markets already pitched by the alpha scan (never repeat), most recent last
+  timezone?: string; // IANA zone for quiet hours (default America/Los_Angeles)
+  onboarding?: OnboardingState; // loose progress of the conversational onboarding (resumes naturally)
+  lastNewsCheckinAt?: string; // last "what do you think?" news check-in (throttle)
+  lastMemorySummaryAt?: string; // memory consolidation: messages after this are "new"
+  uploadTokenHash?: string; // sha256 of the local-texts upload token (revocable; the token itself is never stored)
+  uploadTokenCreatedAt?: string;
+}
+
+/** What the onboarding conversation has covered so far. The agent reads this to pick the next question. */
+export interface OnboardingState {
+  step: "intro" | "interests" | "opinions" | "risk" | "style" | "connect" | "done";
+  captured: ("name" | "interests" | "opinions" | "budget" | "maxPerTrade" | "style" | "connectOffered")[];
+  startedAt: string;
+  updatedAt: string;
+}
+
+export type MemoryKind = "fact" | "belief" | "preference" | "event" | "summary";
+export type MemorySource =
+  | "chat" | "news_reply" | "news_checkin" | "imessage_local" | "notion" | "slack" | "gmail" | "consolidation";
+
+/** Durable, user-visible memory about a user. Superseded memories are kept for history (supersededBy = newer id). */
+export interface Memory {
+  id: string;
+  userId: string;
+  kind: MemoryKind;
+  text: string;
+  topic?: string;
+  confidence?: number; // 0..1
+  source: MemorySource;
+  sourceId?: string; // e.g. the ConnectedSource that produced it (revoking the source deletes it)
+  createdAt: string;
+  updatedAt: string;
+  supersededBy?: string;
+}
+
+/** A "what do you think?" text about a fresh news story, so the agent understands the reply. */
+export interface NewsCheckin {
+  id: string;
+  userId: string;
+  topic: string;
+  headline: string;
+  url: string;
+  question: string; // the question we asked ("do you think the fed cuts in december?")
+  marketQuery?: string; // keywords for search_markets when they answer
+  text: string; // the exact text sent
+  status: "sent" | "answered" | "expired";
+  answer?: string; // the user's view, as remembered
+  createdAt: string;
+  answeredAt?: string;
 }
 
 export interface UserThesis {
@@ -30,7 +79,7 @@ export interface UserThesis {
   topic: string; // e.g. "Seahawks", "AI infrastructure"
   belief: string; // e.g. "AI capex keeps growing"
   confidence: number; // 0..1
-  source: "chat" | "imessage" | "manual" | "notion" | "slack" | "gmail" | "discord";
+  source: "chat" | "imessage" | "manual" | "notion" | "slack" | "gmail" | "discord" | "local_texts";
   sourceId?: string; // ConnectedSource that produced this thesis (so users can see and revoke it)
   updatedAt: string;
 }
@@ -265,7 +314,7 @@ export interface GroupPick {
 
 // ---------- Personal context connectors & account linking ----------
 
-export type ConnectorProvider = "notion" | "slack" | "gmail" | "gemini";
+export type ConnectorProvider = "notion" | "slack" | "gmail" | "gemini" | "local_texts";
 
 export interface ConnectedSource {
   id: string;
@@ -286,7 +335,7 @@ export interface ContextItem {
   id: string;
   userId: string;
   sourceId: string;
-  provider: ConnectorProvider | "discord";
+  provider: ConnectorProvider | "discord" | "local_texts";
   title: string;
   excerpt: string; // short, never the full private message
   url?: string;

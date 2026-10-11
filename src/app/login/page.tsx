@@ -38,8 +38,7 @@ function LoginForm() {
       <div className="flex flex-col items-center text-center">
         <Logo size={48} />
         <h1 className="mt-5 text-2xl font-semibold tracking-tight text-fg">Sign in to Mayflower</h1>
-        <p className="mt-1.5 text-sm text-muted">Your prediction-market trader, in iMessage.</p>
-      </div>
+              </div>
 
       <div className="mt-8 rounded-2xl border border-line bg-surface p-6 shadow-card">
         {expired && !sent && (
@@ -57,11 +56,11 @@ function LoginForm() {
           </div>
         ) : (
           <form onSubmit={submit} className="space-y-3">
-            <label className="block text-[13px] text-muted" htmlFor="handle">Phone number, Apple ID, or Discord handle</label>
+            <label className="sr-only" htmlFor="handle">Phone number, Apple ID, or Discord handle</label>
             <input
               id="handle"
               className="h-11 w-full rounded-xl border border-line-strong bg-surface px-3.5 text-[15px] text-fg outline-none transition placeholder:text-subtle focus:border-accent"
-              placeholder="+1 555 123 4567"
+              placeholder="Phone, Apple ID, or discord:name"
               value={handle}
               onChange={(e) => setHandle(e.target.value)}
               autoFocus
@@ -80,10 +79,9 @@ function LoginForm() {
         )}
       </div>
 
-      <p className="mt-6 text-center text-xs leading-relaxed text-muted">
-        No passwords. New here? <a href={smsHref()} className="text-fg-2 underline decoration-line-strong underline-offset-2 hover:text-fg">Text Mayflower</a> first;
-        your account is created from your messages. You can also text &ldquo;dashboard&rdquo; for a link.
-      </p>
+      <a href={smsHref()} className="mt-6 flex items-center justify-center gap-1.5 text-xs text-muted hover:text-fg">
+        <MessageIcon className="h-3.5 w-3.5" /> New here? Text Mayflower
+      </a>
     </div>
   );
 }

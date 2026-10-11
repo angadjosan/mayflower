@@ -7,7 +7,7 @@ import { updateProfileFromMessage } from "./profile";
 import { discover, formatProposal } from "./discover";
 import { createLoginLink } from "../auth";
 import { proposeHedge } from "../hedge";
-import { runAgent } from "./agent";
+import { runAgent, type AgentOptions } from "./agent";
 import { sendToUser } from "../notify";
 import type { TradeProposal, UserThesis } from "../types";
 
@@ -77,7 +77,7 @@ async function hedgeReply(userId: string, text: string): Promise<string> {
 
 const SOURCE_LABEL: Record<UserThesis["source"], string> = {
   chat: "From our chats", imessage: "From our chats", manual: "Added on the dashboard",
-  notion: "From Notion", slack: "From Slack", gmail: "From Gmail", discord: "From Discord",
+  notion: "From Notion", slack: "From Slack", gmail: "From Gmail", discord: "From Discord", local_texts: "From your own texts (local reader)",
 };
 
 async function sourcesText(userId: string): Promise<string> {
@@ -227,7 +227,7 @@ async function answerQuestion(userId: string, text: string): Promise<string> {
   }
 }
 
-export async function handleMessage(userId: string, text: string, channel: "imessage" | "web"): Promise<string> {
+export async function handleMessage(userId: string, text: string, channel: "imessage" | "web", opts: AgentOptions = {}): Promise<string> {
   const db = await load();
   const user = db.users.find((u) => u.id === userId);
   if (!user) return "Sorry, I couldn't find your account.";
@@ -237,11 +237,13 @@ export async function handleMessage(userId: string, text: string, channel: "imes
   // The agent (Claude + tools) handles every message; the rule-based router below is only a fallback.
   if (llmEnabled) {
     try {
-      return await runAgent(userId, text);
+      return await runAgent(userId, text, opts);
     } catch (e) {
       console.error("[agent] falling back to rules:", e);
     }
   }
+
+  if (!text.trim()) return "got your screenshot, but i can't read images right now\nmind typing the gist?";
 
   const meta = metaIntent(text);
   if (meta) {

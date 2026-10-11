@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import type { ConnectedSource, ContextItem, UserThesis } from "@/lib/types";
-import { Badge, Button, Card, time } from "./ui";
+import { Icon } from "./icons";
+import { Chip, IconButton, Sheet, time } from "./ui";
 
 type Provider = "notion" | "slack" | "gmail";
 type Source = Omit<ConnectedSource, "tokenEnc"> & { theses: UserThesis[]; contextItems: ContextItem[] };
@@ -57,112 +58,105 @@ export default function Connections() {
   };
 
   return (
-    <Card title="Connected context">
-      <p className="mb-3 text-xs text-muted">Optional. Used only as context for ideas — never as permission to trade.</p>
-      {error && <p className="mb-2 text-xs text-down">{error}</p>}
-      {!data ? (
-        <p className="text-sm text-subtle">Loading…</p>
-      ) : (
-        <ul className="divide-y divide-line">
-          {PROVIDERS.map((p) => {
-            const s = data.sources.find((x) => x.provider === p.id);
-            const configured = data.available[p.id];
-            const learned = s ? s.theses.length + s.contextItems.length : 0;
-            return (
-              <li key={p.id} className="py-3 first:pt-0 last:pb-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-fg">{p.label}</span>
-                      {s ? (
-                        s.status === "error" ? <Badge tone="warn">Error</Badge> : <Badge tone="good">Connected</Badge>
-                      ) : !configured ? (
-                        <Badge>Not configured</Badge>
-                      ) : null}
-                    </div>
-                    <div className="mt-0.5 truncate text-xs text-muted">
-                      {s
-                        ? [s.accountLabel, s.lastSyncedAt ? `synced ${time(s.lastSyncedAt)}` : "not synced yet"].filter(Boolean).join(" · ")
-                        : p.blurb}
-                    </div>
-                    {s?.lastError && <div className="mt-0.5 text-xs text-down">{s.lastError}</div>}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {s ? (
-                      <>
-                        <Button onClick={() => sync(p.id)} disabled={busy === p.id}>{busy === p.id ? "Syncing…" : "Sync now"}</Button>
-                        <Button variant="danger" onClick={() => disconnect(p.id, s)} disabled={busy === p.id}>Disconnect</Button>
-                      </>
-                    ) : (
-                      <a
-                        href={configured ? `/api/connect/${p.id}/start` : undefined}
-                        aria-disabled={!configured}
-                        className={`inline-flex h-8 items-center rounded-full border px-3 text-[13px] font-medium transition-all ${
-                          configured ? "border-transparent bg-ink text-ink-fg hover:opacity-90 active:scale-[0.98]" : "pointer-events-none border-line text-subtle opacity-60"
-                        }`}
-                      >
-                        Connect
-                      </a>
-                    )}
-                  </div>
+    <div className="space-y-3">
+      {error && <p className="text-xs text-down">{error}</p>}
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        {PROVIDERS.map((p) => {
+          const s = data?.sources.find((x) => x.provider === p.id);
+          const configured = data?.available[p.id] ?? false;
+          const learned = s ? s.theses.length + s.contextItems.length : 0;
+          const on = !!s && s.status !== "error";
+          const tile = "relative flex flex-col items-center gap-2 rounded-2xl border bg-surface p-4 text-center shadow-card transition-colors";
+          return (
+            <div key={p.id} className={`${tile} ${on ? "border-accent/40" : "border-line"} ${!data ? "animate-pulse" : ""}`}>
+              <span className={`absolute right-3 top-3 h-2 w-2 rounded-full ${s ? (s.status === "error" ? "bg-down" : "bg-up") : "bg-line-strong"}`} aria-label={s ? s.status : "off"} />
+              <BrandMark id={p.id} dim={!s} />
+              <div className="text-[13px] font-medium text-fg">{p.label}</div>
+              {s ? (
+                <div className="flex items-center gap-0.5">
+                  <IconButton label="What Mayflower learned" className="h-7 w-auto gap-1 px-2 text-[11px]" onClick={() => setOpen((o) => ({ ...o, [p.id]: true }))}>
+                    <Icon name="sparkle" className="h-3 w-3" /><span className="num">{learned}</span>
+                  </IconButton>
+                  <IconButton label="Sync now" className="h-7 w-7" onClick={() => sync(p.id)} disabled={busy === p.id}>
+                    <Icon name="refresh" className={`h-3.5 w-3.5 ${busy === p.id ? "animate-spin" : ""}`} />
+                  </IconButton>
+                  <IconButton label="Disconnect" className="h-7 w-7 hover:text-down" onClick={() => disconnect(p.id, s)} disabled={busy === p.id}>
+                    <Icon name="x" className="h-3.5 w-3.5" />
+                  </IconButton>
                 </div>
-
-                {s && (
-                  <div className="mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setOpen((o) => ({ ...o, [p.id]: !o[p.id] }))}
-                      className="text-xs font-medium text-accent hover:text-accent"
-                    >
-                      {open[p.id] ? "▾" : "▸"} What Mayflower learned ({learned})
-                    </button>
-                    {open[p.id] && (
-                      <div className="animate-rise mt-2 space-y-2 rounded-2xl bg-sunken p-3">
-                        {learned === 0 ? (
-                          <p className="text-xs text-subtle">Nothing yet. Try Sync now.</p>
-                        ) : (
-                          <>
-                            {s.theses.length > 0 && (
-                              <ul className="space-y-1">
-                                {s.theses.map((t) => (
-                                  <li key={t.id} className="text-sm">
-                                    <span className="font-medium">{t.topic}</span>
-                                    {t.belief && <span className="text-fg-2">: {t.belief}</span>}{" "}
-                                    <span className="text-xs text-subtle">({Math.round(t.confidence * 100)}%)</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                            {s.contextItems.length > 0 && (
-                              <ul className="space-y-1.5 border-t border-line pt-2">
-                                {s.contextItems.map((c) => (
-                                  <li key={c.id} className="text-xs text-fg-2">
-                                    <div className="font-medium text-fg-2">
-                                      {c.url ? (
-                                        <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-accent underline decoration-line-strong underline-offset-2 hover:decoration-accent">
-                                          {c.title}
-                                        </a>
-                                      ) : (
-                                        c.title
-                                      )}
-                                    </div>
-                                    <div className="italic">“{c.excerpt}”</div>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </>
-                        )}
+              ) : (
+                <a
+                  href={configured ? `/api/connect/${p.id}/start` : undefined}
+                  aria-disabled={!configured}
+                  title={configured ? `Connect ${p.label}` : "Not configured on this server"}
+                  className={`inline-flex h-7 items-center gap-1 rounded-full px-3 text-[11px] font-medium transition-opacity ${configured ? "bg-ink text-ink-fg hover:opacity-90" : "pointer-events-none bg-sunken text-subtle"}`}
+                >
+                  {configured ? <><Icon name="plus" className="h-3 w-3" />Connect</> : "Off"}
+                </a>
+              )}
+              {s && (
+                <Sheet open={!!open[p.id]} onClose={() => setOpen((o) => ({ ...o, [p.id]: false }))} title={<span className="flex items-center gap-2"><BrandMark id={p.id} size={24} />{p.label}</span>}>
+                  <div className="space-y-4 text-left">
+                    <div className="flex flex-wrap gap-1.5">
+                      {s.accountLabel && <Chip>{s.accountLabel}</Chip>}
+                      <Chip><Icon name="clock" className="h-3 w-3" />{s.lastSyncedAt ? time(s.lastSyncedAt) : "never"}</Chip>
+                    </div>
+                    {s.lastError && <p className="text-xs text-down">{s.lastError}</p>}
+                    {learned === 0 && <p className="text-sm text-subtle">Nothing yet</p>}
+                    {s.theses.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {s.theses.map((t) => <Chip key={t.id} tone="accent" title={t.belief}>{t.topic} · {Math.round(t.confidence * 100)}%</Chip>)}
                       </div>
                     )}
+                    {s.contextItems.length > 0 && (
+                      <ul className="space-y-2 border-t border-line pt-3">
+                        {s.contextItems.map((c) => (
+                          <li key={c.id} className="text-xs text-muted">
+                            <div className="font-medium text-fg-2">
+                              {c.url ? <a href={c.url} target="_blank" rel="noopener noreferrer" className="hover:text-accent">{c.title}</a> : c.title}
+                            </div>
+                            <div className="mt-0.5 line-clamp-2">{c.excerpt}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="text-[11px] text-subtle">{p.blurb}. Context only, never permission to trade.</p>
                   </div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </Card>
+                </Sheet>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Simple hand-drawn marks (not official logos) so each tile is recognisable at a glance. */
+function BrandMark({ id, size = 36, dim = false }: { id: Provider; size?: number; dim?: boolean }) {
+  const common = { width: size, height: size, viewBox: "0 0 32 32", "aria-hidden": true, className: `shrink-0 transition-opacity ${dim ? "opacity-70" : ""}` } as const;
+  if (id === "notion")
+    return (
+      <svg {...common}>
+        <rect x="3" y="3" width="26" height="26" rx="6" fill="var(--fg)" />
+        <path d="M11 22V10l10 12V10" fill="none" stroke="var(--bg)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  if (id === "slack")
+    return (
+      <svg {...common}>
+        <rect x="3" y="3" width="26" height="26" rx="6" fill="var(--sunken)" />
+        <path d="M13 8v10" stroke="#36c5f0" strokeWidth="3" strokeLinecap="round" />
+        <path d="M19 14v10" stroke="#2eb67d" strokeWidth="3" strokeLinecap="round" />
+        <path d="M8 19h10" stroke="#e01e5a" strokeWidth="3" strokeLinecap="round" />
+        <path d="M14 13h10" stroke="#ecb22e" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+    );
+  return (
+    <svg {...common}>
+      <rect x="3" y="3" width="26" height="26" rx="6" fill="var(--sunken)" />
+      <path d="M8 11.5v10h3.5v-6.5L16 18.5l4.5-3.5v6.5H24v-10l-8 6-8-6Z" fill="#ea4335" />
+    </svg>
   );
 }
 

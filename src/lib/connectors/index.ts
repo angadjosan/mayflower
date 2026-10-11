@@ -259,14 +259,26 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
 }
 
 /** Cron entry point: re-sync every active context source (skips Gemini account links). */
-export async function syncAll(): Promise<{ synced: number; failed: number }> {
+/** Shared-workspace Notion (NOTION_TOKEN): attach it to every user automatically — no sign-in or connect step.
+ * Users who disconnected it (status "revoked") stay disconnected. */
+export async function autoAttachSharedNotion(): Promise<number> {
+  if (!notionInternal) return 0;
+  const db = await load();
+  const has = new Set(db.connectedSources.filter((s) => s.provider === "notion").map((s) => s.userId));
+  const missing = db.users.filter((u) => u.handle && !has.has(u.id)).map((u) => u.id);
+  for (const userId of missing) await saveConnection(userId, "notion", notionInternalConnection());
+  return missing.length;
+}
+
+export async function syncAll(): Promise<{ synced: number; failed: number; attached?: number }> {
+  const attached = await autoAttachSharedNotion().catch(() => 0);
   const ids = (await load()).connectedSources.filter((s) => s.status !== "revoked" && isContextProvider(s.provider) && s.tokenEnc).map((s) => s.id);
   let synced = 0, failed = 0;
   for (const sid of ids) {
     const r = await syncSource(sid);
     if (r.ok) synced++; else failed++;
   }
-  return { synced, failed };
+  return { synced, failed, attached };
 }
 
 // ---------- Disconnect ----------
@@ -301,6 +313,7 @@ export async function disconnect(sourceId: string): Promise<boolean> {
     const th = db.theses.length, ci = db.contextItems.length;
     db.theses = db.theses.filter((t) => t.sourceId !== sourceId);
     db.contextItems = db.contextItems.filter((c) => c.sourceId !== sourceId);
+    db.memories = (db.memories ?? []).filter((m) => m.sourceId !== sourceId);
     return { theses: th - db.theses.length, items: ci - db.contextItems.length };
   });
   await audit({ userId: src.userId, actor: "user", action: "connector.disconnect", ref: sourceId, detail: { provider: src.provider, removed } });

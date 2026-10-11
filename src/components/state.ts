@@ -2,9 +2,10 @@ import type {
   AuditEvent, ChatMessage, Citation, MonitorEvent, Order, OrderMode, Position, ResearchReport, TradeProposal, User, UserThesis, Venue,
 } from "@/lib/types";
 
-export type ProposalView = TradeProposal & { research?: ResearchReport; approvalUrl: string; venue?: Venue };
+export type ProposalView = TradeProposal & { research?: ResearchReport; approvalUrl: string; venue?: Venue; mode?: OrderMode };
 export type PositionView = Position & {
   venue?: Venue;
+  mode?: OrderMode;
   evidenceFor?: ResearchReport["evidenceFor"];
   evidenceAgainst?: ResearchReport["evidenceAgainst"];
   researchSummary?: string;

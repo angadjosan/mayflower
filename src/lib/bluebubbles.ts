@@ -191,3 +191,21 @@ export async function sendAttachment(handle: string, name: string, bytes: ArrayB
   }
   return false;
 }
+
+/** Image formats Claude accepts, sniffed from magic bytes (iPhone photos may be HEIC, which it doesn't). */
+export function sniffImageType(b: Uint8Array): "image/jpeg" | "image/png" | "image/gif" | "image/webp" | "image/heic" | undefined {
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return "image/png";
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46) return "image/gif";
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return "image/webp";
+  const brand = String.fromCharCode(...b.slice(4, 12));
+  if (/^ftyp(heic|heix|mif1|msf1|hevc)/.test(brand)) return "image/heic";
+  return undefined;
+}
+
+/** A picture someone sent (screenshot, photo of an article or chat). HEIC counts; the caller sniffs the real type. */
+export function isImageAttachment(a: BBAttachment): boolean {
+  if (a.mimeType?.startsWith("image/")) return true;
+  if (a.uti && /^public\.(jpeg|png|heic|heif)$|^com\.compuserve\.gif$|^org\.webmproject\.webp$/.test(a.uti)) return true;
+  return /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(a.transferName ?? "");
+}

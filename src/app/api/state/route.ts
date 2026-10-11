@@ -4,7 +4,7 @@ import { sessionUserId, UNAUTHORIZED } from "@/lib/session";
 import { approvalUrl } from "@/lib/execution";
 import { getPortfolioSummary } from "@/lib/risk";
 import { llmEnabled } from "@/lib/llm";
-import { exchangeMode, polymarketMode, polymarketEnabled, hyperliquidMode, hyperliquidEnabled, getBalance, venueOf } from "@/lib/exchange";
+import { exchangeMode, polymarketMode, polymarketEnabled, hyperliquidMode, hyperliquidEnabled, getBalance, venueOf, orderModeFor } from "@/lib/exchange";
 import { ensureTestWallet, walletOf } from "@/lib/testWallet";
 import { researchMode } from "@/lib/research";
 import { bbEnabled } from "@/lib/bluebubbles";
@@ -49,7 +49,7 @@ export async function GET() {
     .sort((a, b) =>
       (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1) || b.createdAt.localeCompare(a.createdAt),
     )
-    .map((p) => ({ ...p, venue: venueOf(p.market), research: researchById.get(p.researchId), approvalUrl: approvalUrl(p) }));
+    .map((p) => ({ ...p, venue: venueOf(p.market), mode: orderModeFor(p.market), research: researchById.get(p.researchId), approvalUrl: approvalUrl(p) }));
   const proposalById = new Map(db.proposals.map((p) => [p.id, p]));
   const positions = mine(db.positions).map((pos) => {
     const p = proposalById.get(pos.proposalId);
@@ -57,6 +57,7 @@ export async function GET() {
     return {
       ...pos,
       venue: venueOf(pos.market),
+      mode: orderModeFor(pos.market),
       evidenceFor: r?.evidenceFor ?? [],
       evidenceAgainst: r?.evidenceAgainst ?? [],
       researchSummary: r?.summary,

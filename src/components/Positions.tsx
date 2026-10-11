@@ -1,250 +1,225 @@
 "use client";
-import { Fragment, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MonitorEvent } from "@/lib/types";
+import { Icon } from "./icons";
 import PositionActions from "./PositionActions";
+import { WhySheet } from "./Recommendations";
 import type { PositionView } from "./state";
-import { Badge, Chevron, CitationLink, Empty, SideTag, VenueBadge, cents, pct, shortDate, signedPct, signedUsd, smsHref, time, usd } from "./ui";
+import { Badge, Chip, Eyebrow, IconButton, OddsBar, SideTag, SimulatedChip, VenueBadge, cents, pnlTone, shortDate, signedPct, signedUsd, time, usd } from "./ui";
 
 function pnlOf(p: PositionView) {
   const mark = p.currentPrice;
   if (mark == null || p.status !== "open") return { usd: p.realizedPnlUsd, pct: p.costBasisUsd > 0 ? p.realizedPnlUsd / p.costBasisUsd : 0, known: p.status !== "open" };
-  const u = (mark - p.avgEntryPrice) * p.quantity;
-  return { usd: u, pct: p.avgEntryPrice > 0 ? mark / p.avgEntryPrice - 1 : 0, known: true };
+  return { usd: (mark - p.avgEntryPrice) * p.quantity, pct: p.avgEntryPrice > 0 ? mark / p.avgEntryPrice - 1 : 0, known: true };
 }
 
-const THESIS: Record<NonNullable<PositionView["thesisStatus"]>, { label: string; tone: "good" | "warn" | "bad" }> = {
-  intact: { label: "Thesis intact", tone: "good" },
-  weakened: { label: "Thesis weakened", tone: "warn" },
-  broken: { label: "Thesis broken", tone: "bad" },
+const HEALTH: Record<NonNullable<PositionView["thesisStatus"]>, { label: string; dot: string; tone: "up" | "warn" | "down" }> = {
+  intact: { label: "Thesis intact", dot: "bg-up", tone: "up" },
+  weakened: { label: "Thesis weakened", dot: "bg-warn", tone: "warn" },
+  broken: { label: "Thesis broken", dot: "bg-down", tone: "down" },
 };
 
-function ThesisDot({ status }: { status?: PositionView["thesisStatus"] }) {
-  if (!status) return null;
-  const c = status === "intact" ? "bg-up" : status === "weakened" ? "bg-warn" : "bg-down";
-  return <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${c}`} title={THESIS[status].label} aria-label={THESIS[status].label} />;
+function HealthDot({ status }: { status?: PositionView["thesisStatus"] }) {
+  const h = status ? HEALTH[status] : null;
+  return (
+    <span
+      className={`relative flex h-2.5 w-2.5 shrink-0 rounded-full ${h ? h.dot : "bg-line-strong"}`}
+      title={h ? h.label : "Thesis not checked yet"}
+      aria-label={h ? h.label : "Thesis not checked yet"}
+    >
+      {status === "broken" && <span className="absolute inset-0 animate-ping rounded-full bg-down opacity-60" />}
+    </span>
+  );
 }
 
-function Details({ p, events, onDone }: { p: PositionView; events: MonitorEvent[]; onDone: () => void }) {
-  const t = p.thesisStatus ? THESIS[p.thesisStatus] : null;
+function RowMenu({ onDetails, onClose, canClose }: { onDetails: () => void; onClose: () => void; canClose: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const off = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", off);
+    return () => document.removeEventListener("mousedown", off);
+  }, [open]);
   return (
-    <div className="animate-fade grid gap-6 px-4 pb-5 pt-1 sm:px-5 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-      <div className="min-w-0 space-y-4 text-sm">
-        <div>
-          <div className="mb-1.5 flex flex-wrap items-center gap-2">
-            <Label>Thesis</Label>
-            {t ? <Badge tone={t.tone}>{t.label}</Badge> : <Badge>Not checked yet</Badge>}
-            {p.thesisCheckedAt && <span className="text-[11px] text-subtle">checked {time(p.thesisCheckedAt)}</span>}
-          </div>
-          <p className="leading-relaxed text-fg-2">{p.thesis || "—"}</p>
+    <div className="relative" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <IconButton label="More" onClick={() => setOpen(!open)} aria-expanded={open} className="h-8 w-8"><Icon name="more" /></IconButton>
+      {open && (
+        <div role="menu" className="animate-pop absolute right-0 top-9 z-20 w-40 origin-top-right rounded-xl border border-line bg-surface p-1 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.35)]">
+          <MenuItem icon="info" onClick={() => { setOpen(false); onDetails(); }}>Why</MenuItem>
+          {canClose && <MenuItem icon="x" onClick={() => { setOpen(false); onClose(); }}>Close / reduce</MenuItem>}
         </div>
-        {p.latestAssessment && (
-          <div>
-            <Label>Latest assessment</Label>
-            <p className="mt-1 leading-relaxed text-fg-2">{p.latestAssessment}</p>
-          </div>
-        )}
-        {(p.evidenceFor?.length || p.evidenceAgainst?.length) ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Evidence title="For" items={p.evidenceFor ?? []} tone="up" />
-            <Evidence title="Against" items={p.evidenceAgainst ?? []} tone="down" />
-          </div>
-        ) : null}
-        {p.citations && p.citations.length > 0 && (
-          <div>
-            <Label>Sources</Label>
-            <ul className="mt-1 space-y-1 text-[13px]">
-              {p.citations.slice(0, 5).map((c, i) => <li key={i}><CitationLink c={c} /></li>)}
-            </ul>
-          </div>
-        )}
-      </div>
+      )}
+    </div>
+  );
+}
 
-      <div className="min-w-0 space-y-4 text-sm">
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-sunken p-4">
-          <Fact k="Mayflower" v={pct(p.estimatedProbability)} />
-          <Fact k="Market" v={pct(p.currentPrice ?? p.avgEntryPrice)} />
-          <Fact k="Cost basis" v={usd(p.costBasisUsd)} />
-          <Fact k="Opened" v={shortDate(p.openedAt)} />
-          {p.stopPrice != null && <Fact k="Exit alert ≤" v={cents(p.stopPrice)} />}
-          {p.takeProfitPrice != null && <Fact k="Take-profit ≥" v={cents(p.takeProfitPrice)} />}
-        </dl>
-        {p.sizingExplanation && (
-          <div>
-            <Label>Why this size</Label>
-            <p className="mt-1 text-[13px] leading-relaxed text-fg-2">{p.sizingExplanation}</p>
-          </div>
-        )}
-        {events.length > 0 && (
-          <div>
-            <Label>Monitor</Label>
-            <ul className="mt-1.5 space-y-2">
-              {events.slice(0, 4).map((e) => (
-                <li key={e.id} className="text-[13px] leading-snug text-fg-2">
-                  <span className="num text-[11px] text-subtle">{time(e.createdAt)}</span>{" "}
-                  <Badge tone={e.recommendation === "hold" ? "neutral" : "warn"}>{e.recommendation}</Badge> {e.explanation}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {p.status === "open" && (
-          <div className="flex flex-wrap items-start gap-3 border-t border-line pt-4">
-            <PositionActions position={p} onDone={onDone} />
-            <a href={smsHref(`How's my ${p.market.title} position looking?`)} className="ml-auto text-xs text-muted underline-offset-2 hover:text-fg hover:underline">
-              Ask in iMessage
-            </a>
-          </div>
-        )}
+function MenuItem({ icon, children, onClick }: { icon: "info" | "x"; children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button role="menuitem" onClick={onClick} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-fg hover:bg-sunken">
+      <Icon name={icon} className="h-3.5 w-3.5 text-muted" />{children}
+    </button>
+  );
+}
+
+function Expanded({ p, events, onDone, onWhy }: { p: PositionView; events: MonitorEvent[]; onDone: () => void; onWhy: () => void }) {
+  const h = p.thesisStatus ? HEALTH[p.thesisStatus] : null;
+  return (
+    <div className="animate-fade space-y-4 px-4 pb-4 pt-1 sm:px-5" onClick={(e) => e.stopPropagation()}>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Mini k="Cost" v={usd(p.costBasisUsd)} />
+        <Mini k="Opened" v={shortDate(p.openedAt)} />
+        <Mini k="Alert ≤" v={cents(p.stopPrice)} />
+        <Mini k="Target ≥" v={cents(p.takeProfitPrice)} />
       </div>
+      <div className="rounded-xl bg-sunken px-3 py-3">
+        <div className="mb-2 flex items-center justify-between text-[11px] text-muted">
+          <span>Price vs Mayflower</span>
+          {h ? <Chip tone={h.tone}>{h.label.replace("Thesis ", "")}</Chip> : <Chip>Unchecked</Chip>}
+        </div>
+        <OddsBar market={p.currentPrice ?? p.avgEntryPrice} mine={p.estimatedProbability} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {p.status === "open" && <PositionActions position={p} onDone={onDone} />}
+        <button onClick={onWhy} className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs text-muted hover:bg-sunken hover:text-fg">
+          <Icon name="info" className="h-3.5 w-3.5" /> Why{events.length ? ` · ${events.length}` : ""}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Mini({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="rounded-xl bg-sunken px-3 py-2">
+      <div className="text-[11px] text-muted">{k}</div>
+      <div className="num mt-0.5 text-[13px] font-medium text-fg">{v}</div>
     </div>
   );
 }
 
 export function Positions({ positions, events, onChanged }: { positions: PositionView[]; events: MonitorEvent[]; onChanged: () => void }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [whyId, setWhyId] = useState<string | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   const open = positions.filter((p) => p.status === "open");
   const closed = positions.filter((p) => p.status !== "open");
   const rows = showClosed ? [...open, ...closed] : open;
+  const why = positions.find((p) => p.id === whyId);
 
   if (positions.length === 0) {
-    return <Empty>No positions yet. When you approve one of Mayflower&apos;s ideas, it shows up here with live marks and P&amp;L.</Empty>;
+    return (
+      <div className="flex items-center gap-3 rounded-2xl border border-dashed border-line-strong px-4 py-5 text-sm text-muted">
+        <Icon name="layers" className="h-5 w-5 text-subtle" />
+        No positions yet
+      </div>
+    );
   }
 
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
-      {/* Desktop table */}
-      <table className="hidden w-full table-fixed text-sm md:table">
-        <thead>
-          <tr className="border-b border-line text-left text-xs text-muted">
-            <th className="py-3 pl-5 pr-3 font-normal">Market</th>
-            <th className="w-16 px-3 py-3 font-normal">Side</th>
-            <th className="w-16 px-3 py-3 text-right font-normal lg:w-20">Qty</th>
-            <th className="w-16 px-3 py-3 text-right font-normal lg:w-20">Avg</th>
-            <th className="w-16 px-3 py-3 text-right font-normal lg:w-20">Mark</th>
-            <th className="w-24 px-3 py-3 text-right font-normal lg:w-28">Value</th>
-            <th className="w-24 px-3 py-3 text-right font-normal lg:w-28">P&amp;L</th>
-            <th className="w-20 px-3 py-3 text-right font-normal lg:w-24">Expires</th>
-            <th className="w-10 py-3 pr-4" aria-label="Details" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((p) => {
-            const isOpen = openId === p.id;
-            const pl = pnlOf(p);
-            const value = (p.currentPrice ?? p.avgEntryPrice) * p.quantity;
-            return (
-              <Fragment key={p.id}>
-                <tr
-                  onClick={() => setOpenId(isOpen ? null : p.id)}
-                  className={`cursor-pointer border-b border-line transition-colors last:border-0 ${isOpen ? "bg-raised" : "hover:bg-raised"} ${p.status !== "open" ? "opacity-60" : ""}`}
-                >
-                  <td className="py-3.5 pl-5 pr-3">
-                    <div className="flex items-center gap-2">
-                      <ThesisDot status={p.thesisStatus} />
-                      <span className="truncate font-medium text-fg" title={p.market.title}>{p.market.title}</span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-2 text-xs text-muted">
-                      <VenueBadge venue={p.venue} />
-                      {p.market.eventTitle && p.market.eventTitle !== p.market.title && <span className="truncate">{p.market.eventTitle}</span>}
-                      {p.status !== "open" && <Badge>closed</Badge>}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3.5"><SideTag side={p.side} /></td>
-                  <td className="num px-3 py-3.5 text-right text-fg-2">{p.quantity.toLocaleString()}</td>
-                  <td className="num px-3 py-3.5 text-right text-fg-2">{cents(p.avgEntryPrice)}</td>
-                  <td className="num px-3 py-3.5 text-right text-fg">{cents(p.currentPrice)}</td>
-                  <td className="num px-3 py-3.5 text-right text-fg">{usd(value)}</td>
-                  <td className={`num px-3 py-3.5 text-right ${pl.usd > 0 ? "text-up" : pl.usd < 0 ? "text-down" : "text-muted"}`}>
-                    <div>{pl.known ? signedUsd(pl.usd) : "—"}</div>
-                    <div className="text-xs opacity-80">{pl.known ? signedPct(pl.pct) : ""}</div>
-                  </td>
-                  <td className="num px-3 py-3.5 text-right text-xs text-muted">{shortDate(p.market.expiresAt)}</td>
-                  <td className="py-3.5 pr-4 text-right text-subtle"><Chevron open={isOpen} /></td>
-                </tr>
-                {isOpen && (
-                  <tr className="border-b border-line bg-raised last:border-0">
-                    <td colSpan={9}><Details p={p} events={events.filter((e) => e.positionId === p.id)} onDone={onChanged} /></td>
-                  </tr>
-                )}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-
-      {/* Mobile list */}
-      <ul className="divide-y divide-line md:hidden">
+      <ul className="divide-y divide-line">
         {rows.map((p) => {
           const isOpen = openId === p.id;
           const pl = pnlOf(p);
           const value = (p.currentPrice ?? p.avgEntryPrice) * p.quantity;
           return (
             <li key={p.id} className={`${isOpen ? "bg-raised" : ""} ${p.status !== "open" ? "opacity-60" : ""}`}>
-              <button type="button" onClick={() => setOpenId(isOpen ? null : p.id)} aria-expanded={isOpen} className="w-full px-4 py-3.5 text-left">
-                <div className="flex items-start gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start gap-2">
-                      {p.thesisStatus && <span className="mt-[8px] flex"><ThesisDot status={p.thesisStatus} /></span>}
-                      <span className="line-clamp-2 text-[15px] font-medium leading-snug text-fg">{p.market.title}</span>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
-                      <SideTag side={p.side} />
-                      <span className="num">{p.quantity} @ {cents(p.avgEntryPrice)} → {cents(p.currentPrice)}</span>
-                    </div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className="num text-[15px] font-medium text-fg">{usd(value)}</div>
-                    <div className={`num mt-0.5 text-xs ${pl.usd > 0 ? "text-up" : pl.usd < 0 ? "text-down" : "text-muted"}`}>
-                      {pl.known ? `${signedUsd(pl.usd)} · ${signedPct(pl.pct, 1)}` : "—"}
-                    </div>
+              <div
+                role="button"
+                tabIndex={0}
+                aria-expanded={isOpen}
+                onClick={() => setOpenId(isOpen ? null : p.id)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpenId(isOpen ? null : p.id); } }}
+                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-raised sm:px-5"
+              >
+                <HealthDot status={p.thesisStatus} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium text-fg" title={p.market.title}>{p.market.title}</div>
+                  <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+                    <SideTag side={p.side} />
+                    <span className="num">{p.quantity}</span>
+                    <span className="num hidden min-[400px]:inline">· {cents(p.avgEntryPrice)} → {cents(p.currentPrice)}</span>
+                    <span className="hidden sm:inline-flex"><VenueBadge venue={p.venue} /></span>
+                    {p.mode === "simulated" && <SimulatedChip />}
+                    {p.status !== "open" && <Badge>closed</Badge>}
                   </div>
                 </div>
-                <div className="mt-2 flex items-center gap-2 text-[11px] text-subtle">
-                  <VenueBadge venue={p.venue} />
-                  <span>Expires {shortDate(p.market.expiresAt)}</span>
-                  <span className="ml-auto"><Chevron open={isOpen} className="h-3.5 w-3.5" /></span>
+                <div className="num hidden w-20 text-right text-xs text-muted md:block" title="Expires">
+                  {shortDate(p.market.expiresAt)}
                 </div>
-              </button>
-              {isOpen && <Details p={p} events={events.filter((e) => e.positionId === p.id)} onDone={onChanged} />}
+                <div className="shrink-0 text-right">
+                  <div className="num text-sm font-medium text-fg">{usd(value)}</div>
+                  <Chip tone={pnlTone(pl.usd)} className="mt-1 h-5 px-1.5 text-[11px]">
+                    {pl.known ? signedPct(pl.pct, 1) : "—"}
+                  </Chip>
+                </div>
+                <RowMenu canClose={p.status === "open"} onDetails={() => setWhyId(p.id)} onClose={() => setOpenId(p.id)} />
+              </div>
+              {isOpen && (
+                <Expanded
+                  p={p}
+                  events={events.filter((e) => e.positionId === p.id)}
+                  onDone={onChanged}
+                  onWhy={() => setWhyId(p.id)}
+                />
+              )}
             </li>
           );
         })}
       </ul>
 
       {closed.length > 0 && (
-        <button onClick={() => setShowClosed(!showClosed)} className="w-full border-t border-line px-5 py-3 text-left text-xs text-muted transition-colors hover:bg-raised hover:text-fg">
-          {showClosed ? "Hide" : "Show"} {closed.length} closed position{closed.length === 1 ? "" : "s"}
+        <button onClick={() => setShowClosed(!showClosed)} className="flex w-full items-center gap-1.5 border-t border-line px-5 py-2.5 text-xs text-muted transition-colors hover:bg-raised hover:text-fg">
+          <Icon name="chevronDown" className={`h-3.5 w-3.5 transition-transform ${showClosed ? "rotate-180" : ""}`} />
+          Closed · {closed.length}
         </button>
       )}
-    </div>
-  );
-}
 
-function Label({ children }: { children: React.ReactNode }) {
-  return <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted">{children}</span>;
-}
-
-function Fact({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[11px] text-muted">{k}</dt>
-      <dd className="num mt-0.5 text-sm font-medium text-fg">{v}</dd>
-    </div>
-  );
-}
-
-function Evidence({ title, items, tone }: { title: string; items: { point: string; citation?: { title: string; url: string } }[]; tone: "up" | "down" }) {
-  return (
-    <div>
-      <div className="flex items-center gap-1.5">
-        <span className={`h-1.5 w-1.5 rounded-full ${tone === "up" ? "bg-up" : "bg-down"}`} aria-hidden />
-        <Label>{title}</Label>
-      </div>
-      <ul className="mt-1.5 space-y-1.5 text-[13px] leading-snug text-fg-2">
-        {items.slice(0, 3).map((e, i) => <li key={i}>{e.point}</li>)}
-        {!items.length && <li className="text-subtle">None found.</li>}
-      </ul>
+      {why && (
+        <WhySheet
+          open
+          onClose={() => setWhyId(null)}
+          title={
+            <div>
+              <div className="flex items-center gap-2"><HealthDot status={why.thesisStatus} />{why.market.title}</div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-normal">
+                <SideTag side={why.side} />
+                <Chip tone={pnlTone(pnlOf(why).usd)}>{signedUsd(pnlOf(why).usd)}</Chip>
+                {why.thesisCheckedAt && <Chip><Icon name="clock" className="h-3 w-3" />{time(why.thesisCheckedAt)}</Chip>}
+              </div>
+            </div>
+          }
+          thesis={why.thesis}
+          research={{
+            id: "", marketId: why.marketId, createdAt: "", summary: why.researchSummary ?? "",
+            evidenceFor: why.evidenceFor ?? [], evidenceAgainst: why.evidenceAgainst ?? [], citations: why.citations ?? [],
+            estimatedProbability: why.estimatedProbability ?? 0, uncertainty: "medium", source: "context.dev",
+          }}
+          sizing={why.sizingExplanation}
+          ask={`How's my ${why.market.title} position looking?`}
+        >
+          {why.latestAssessment && (
+            <div>
+              <Eyebrow>Latest</Eyebrow>
+              <p className="mt-1 text-[13px] leading-relaxed text-fg-2">{why.latestAssessment}</p>
+            </div>
+          )}
+          {events.some((e) => e.positionId === why.id) && (
+            <div>
+              <Eyebrow>Monitor</Eyebrow>
+              <ul className="mt-1.5 space-y-2">
+                {events.filter((e) => e.positionId === why.id).slice(0, 5).map((e) => (
+                  <li key={e.id} className="text-[13px] leading-snug text-fg-2">
+                    <Badge tone={e.recommendation === "hold" ? "neutral" : "warn"}>{e.recommendation}</Badge> {e.explanation}
+                    <span className="num ml-1 text-[11px] text-subtle">{time(e.createdAt)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </WhySheet>
+      )}
     </div>
   );
 }

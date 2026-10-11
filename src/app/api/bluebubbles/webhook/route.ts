@@ -5,7 +5,8 @@ import { storeMessage, sendToUser } from "@/lib/notify";
 import { handleMessage } from "@/lib/agent/chat";
 import { punchUp } from "@/lib/punchUp";
 import { handleGroupMessage } from "@/lib/agent/group";
-import { bbEnabled, downloadAttachment, isVoiceMemo, sendAttachment, type BBAttachment } from "@/lib/bluebubbles";
+import { bbEnabled, downloadAttachment, isImageAttachment, isVoiceMemo, sendAttachment, type BBAttachment } from "@/lib/bluebubbles";
+import { prepareSharedImages, storedTextFor } from "@/lib/sharedImages";
 import { ElevenLabsError, elevenEnabled, transcribe } from "@/lib/elevenlabs";
 import { wantsVoice } from "@/lib/voiceNotes";
 import { callsEnabled, callUrl, claimCall, ringUser, wantsCall } from "@/lib/calls";
@@ -56,7 +57,9 @@ export async function POST(req: Request) {
   // not addressed to us, so they are never transcribed.
   const memo = isGroup ? undefined : body.data?.attachments?.find(isVoiceMemo);
   const voiceIn = Boolean(memo?.guid) && (Boolean(body.data?.isAudioMessage) || !typed);
-  if (body.type !== "new-message" || body.data?.isFromMe || (!typed && !voiceIn) || !address || !firstTime(body.data?.guid)) {
+  // 1:1 screenshots/photos (chats, articles, tweets) are context the user is sharing; never ignore them.
+  const pics = isGroup || voiceIn ? [] : (body.data?.attachments ?? []).filter((a) => a.guid && isImageAttachment(a));
+  if (body.type !== "new-message" || body.data?.isFromMe || (!typed && !voiceIn && !pics.length) || !address || !firstTime(body.data?.guid)) {
     return NextResponse.json({ ok: true, ignored: true });
   }
   if (isGroup && process.env.ALLOW_GROUP_CHATS !== "1") {
@@ -84,7 +87,9 @@ export async function POST(req: Request) {
       return;
     }
     const user = await getOrCreateUser({ handle: address });
-    await storeMessage(user.id, "user", text, "imessage");
+    const shared = pics.length ? await prepareSharedImages(pics) : { images: [], notes: [] };
+    const storedText = storedTextFor(text, shared.images.length, shared.notes.length);
+    await storeMessage(user.id, "user", storedText, "imessage");
     // "call me": ring their phone, or text a link that opens a call in the browser.
     if (callsEnabled() && wantsCall(text)) {
       if (!(await claimCall(user.id))) return sendToUser(user.id, "one sec, we just tried you");
@@ -94,7 +99,7 @@ export async function POST(req: Request) {
     const startedAt = Date.now();
     let reply: string;
     try {
-      reply = await punchUp(await handleMessage(user.id, text, "imessage"));
+      reply = await punchUp(await handleMessage(user.id, text, "imessage", { images: shared.images, attachmentNotes: shared.notes, storedText }));
     } catch (e) {
       console.error(e);
       reply = "ah something broke on my end\ngive me a sec and send that again";

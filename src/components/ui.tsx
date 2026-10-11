@@ -1,5 +1,7 @@
 "use client";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { Icon } from "./icons";
 
 // ---------- Formatting ----------
 
@@ -13,7 +15,7 @@ export const usdCompact = (n: number | undefined | null) =>
     ? "—"
     : Math.abs(n) >= 1000
       ? `${n < 0 ? "-" : ""}$${(Math.abs(n) / 1000).toFixed(Math.abs(n) >= 100_000 ? 0 : 1)}k`
-      : usd(n);
+      : usd(n, Number.isInteger(n) || Math.abs(n) >= 100 ? 0 : 2);
 export const pct = (p: number | undefined | null) => (p == null || Number.isNaN(p) ? "—" : `${Math.round(p * 100)}%`);
 export const signedPct = (p: number | undefined | null, digits = 2) =>
   p == null || Number.isNaN(p) || !Number.isFinite(p) ? "—" : `${p > 0 ? "+" : p < 0 ? "−" : ""}${Math.abs(p * 100).toFixed(digits)}%`;
@@ -208,5 +210,155 @@ export function Chevron({ open, className = "h-4 w-4" }: { open?: boolean; class
     <svg viewBox="0 0 16 16" className={`${className} transition-transform duration-200 ${open ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden>
       <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+// ---------- Widgets ----------
+
+/** Circular gauge. `value` is 0..1. Center content is up to the caller. */
+export function Ring({
+  value, size = 56, stroke = 5, color = "var(--fg)", track = "var(--sunken)", children, label,
+}: { value: number; size?: number; stroke?: number; color?: string; track?: string; children?: ReactNode; label?: string }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const v = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }} role={label ? "img" : undefined} aria-label={label}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={track} strokeWidth={stroke} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={c * (1 - v)} className="transition-[stroke-dashoffset] duration-700"
+        />
+      </svg>
+      {children && <div className="absolute inset-0 flex items-center justify-center">{children}</div>}
+    </div>
+  );
+}
+
+/** Small rounded chip for values: "$46", "+17 pts", "Simulated". */
+export function Chip({ children, tone = "neutral", className = "", title }: { children: ReactNode; tone?: "neutral" | "up" | "down" | "accent" | "warn" | "solid"; className?: string; title?: string }) {
+  const styles = {
+    neutral: "bg-sunken text-fg-2",
+    up: "bg-up-soft text-up",
+    down: "bg-down-soft text-down",
+    accent: "bg-accent-soft text-accent",
+    warn: "bg-warn-soft text-warn",
+    solid: "bg-ink text-ink-fg",
+  }[tone];
+  return <span title={title} className={`num inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full px-2 text-xs font-medium ${styles} ${className}`}>{children}</span>;
+}
+
+export const pnlTone = (n: number) => (n > 0 ? "up" : n < 0 ? "down" : "neutral") as "up" | "down" | "neutral";
+
+/** Honest label for anything that will not touch a real test venue. */
+export function SimulatedChip() {
+  return <Chip tone="warn" title="Simulated: no order reaches an exchange">Sim</Chip>;
+}
+
+export function IconButton({ label, children, className = "", ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      {...props}
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-sunken hover:text-fg disabled:opacity-40 ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Bottom sheet on phones, centered dialog on larger screens. Holds the prose we keep off the main view. */
+export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode }) {
+  useEffect(() => {
+    if (!open) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", esc);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.removeEventListener("keydown", esc); document.body.style.overflow = prev; };
+  }, [open, onClose]);
+  if (!open || typeof document === "undefined") return null;
+  // Portal: ancestors with transforms (entry animations) would otherwise trap `fixed` positioning.
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-modal="true">
+      <button className="animate-fade absolute inset-0 bg-black/50 backdrop-blur-[2px]" onClick={onClose} aria-label="Close" />
+      <div className="animate-sheet relative max-h-[86vh] w-full overflow-y-auto rounded-t-3xl border border-line bg-surface px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-3 shadow-2xl sm:max-w-lg sm:rounded-3xl sm:pt-5">
+        <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-line-strong sm:hidden" aria-hidden />
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0 text-[15px] font-semibold leading-snug tracking-tight text-fg">{title}</div>
+          <button onClick={onClose} className="-mr-1 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted hover:bg-sunken hover:text-fg" aria-label="Close">
+            <Icon name="x" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Info icon that opens its text in a sheet. */
+export function InfoTip({ title, children, className = "" }: { title: string; children: ReactNode; className?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} aria-label={`About ${title}`} title={title} className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-subtle transition-colors hover:text-fg ${className}`}>
+        <Icon name="info" className="h-3.5 w-3.5" />
+      </button>
+      <Sheet open={open} onClose={() => setOpen(false)} title={title}>
+        <div className="space-y-3 text-sm leading-relaxed text-fg-2">{children}</div>
+      </Sheet>
+    </>
+  );
+}
+
+/** Tiny uppercase label for widget tiles. */
+export function Eyebrow({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <div className={`text-[11px] font-medium uppercase tracking-[0.08em] text-muted ${className}`}>{children}</div>;
+}
+
+/** Price vs Mayflower probability on one 0-100 track. */
+export function OddsBar({ market, mine, compact = false }: { market: number; mine?: number; compact?: boolean }) {
+  const m = Math.max(0, Math.min(1, market)) * 100;
+  const y = mine == null ? null : Math.max(0, Math.min(1, mine)) * 100;
+  const lo = y == null ? m : Math.min(m, y), hi = y == null ? m : Math.max(m, y);
+  return (
+    <div>
+      <div className="relative h-1.5 rounded-full bg-line">
+        {y != null && <div className={`absolute inset-y-0 rounded-full ${y >= m ? "bg-accent/35" : "bg-down/35"}`} style={{ left: `${lo}%`, width: `${hi - lo}%` }} />}
+        <div className="absolute top-1/2 h-3 w-0.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted" style={{ left: `${m}%` }} title="Price" />
+        {y != null && <div className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface bg-accent" style={{ left: `${y}%` }} title="Mayflower" />}
+      </div>
+      {!compact && (
+        <div className="num mt-1.5 flex justify-between text-[11px] text-muted">
+          <span className="inline-flex items-center gap-1"><span className="h-2 w-0.5 rounded-full bg-muted" />{Math.round(m)}¢</span>
+          {y != null && <span className="inline-flex items-center gap-1 text-accent"><span className="h-1.5 w-1.5 rounded-full bg-accent" />{Math.round(y)}%</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Segmented control. */
+export function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: { value: T; label: ReactNode; title?: string }[]; onChange: (v: T) => void; label: string }) {
+  return (
+    <div className="inline-flex rounded-full bg-sunken p-0.5" role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={value === o.value}
+          title={o.title}
+          onClick={() => onChange(o.value)}
+          className={`flex h-8 items-center justify-center gap-1 rounded-full px-3 text-xs font-medium transition-colors ${value === o.value ? "bg-surface text-fg shadow-[0_1px_2px_rgba(0,0,0,0.12)] ring-1 ring-line-strong" : "text-muted hover:text-fg"}`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
   );
 }

@@ -125,32 +125,42 @@ export default async function ApprovePage({
               <span>Mayflower <span className="text-accent">{pct(p.estimatedProbability)}</span></span>
             </div>
           </div>
-          <p className="mt-5 text-[13px] text-muted">Nothing is placed until you approve. These are exactly the terms that will be sent.</p>
         </section>
 
-        <dl className="mt-6 divide-y divide-line rounded-2xl border border-line bg-surface text-sm">
-          {rows.map(([k, v]) => (
-            <div key={k} className="flex justify-between gap-4 px-4 py-3">
-              <dt className="text-muted">{k}</dt>
-              <dd className="text-right font-medium tabular-nums text-fg">{v}</dd>
+        <div className="mt-6 grid grid-cols-3 gap-2">
+          <Tile k="Max loss" v={buying ? usd(maxLoss) : "—"} />
+          <Tile k="Closes" v={p.market.expiresAt ? leftLabel(new Date(p.market.expiresAt).getTime() - Date.now()) : "—"} />
+          <Tile k="Offer ends" v={expired ? "Expired" : leftLabel(new Date(p.expiresAt).getTime() - Date.now())} />
+        </div>
+
+        <div className="mt-4 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+          <Expander title="Why">
+            <div className="space-y-4 text-sm">
+              <p className="leading-relaxed text-fg">{p.thesis}</p>
+              {p.sizingExplanation && <Bubble title="Size">{p.sizingExplanation}</Bubble>}
+              {p.riskNotes && <Bubble title="Risks">{p.riskNotes}</Bubble>}
+              {research && research.citations.length > 0 && (
+                <Bubble title="Sources">
+                  <ul className="space-y-1">
+                    {research.citations.slice(0, 5).map((c) => (
+                      <li key={c.url}><a className="text-fg-2 underline decoration-line-strong underline-offset-[3px] hover:text-accent" href={c.url} target="_blank" rel="noreferrer">{c.title}</a></li>
+                    ))}
+                  </ul>
+                </Bubble>
+              )}
             </div>
-          ))}
-        </dl>
-
-        <section className="mt-8 space-y-6 text-sm">
-          <Bubble title="Thesis">{p.thesis}</Bubble>
-          <Bubble title="Why this size">{p.sizingExplanation}</Bubble>
-          {p.riskNotes && <Bubble title="Risks">{p.riskNotes}</Bubble>}
-          {research && research.citations.length > 0 && (
-            <Bubble title="Sources">
-              <ul className="space-y-1">
-                {research.citations.slice(0, 5).map((c) => (
-                  <li key={c.url}><a className="text-fg-2 underline decoration-line-strong underline-offset-[3px] hover:text-accent" href={c.url} target="_blank" rel="noreferrer">{c.title}</a></li>
-                ))}
-              </ul>
-            </Bubble>
-          )}
-        </section>
+          </Expander>
+          <Expander title="Exact order terms">
+            <dl className="-mx-4 -mb-4 divide-y divide-line text-sm">
+              {rows.map(([k, v]) => (
+                <div key={k} className="flex justify-between gap-4 px-4 py-2.5">
+                  <dt className="text-muted">{k}</dt>
+                  <dd className="text-right font-medium tabular-nums text-fg">{v}</dd>
+                </div>
+              ))}
+            </dl>
+          </Expander>
+        </div>
 
         <div className="sticky bottom-0 -mx-4 mt-8 bg-gradient-to-t from-bg via-bg to-transparent px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-6 sm:static sm:mx-0 sm:bg-none sm:px-0">
           <ApproveActions
@@ -162,6 +172,33 @@ export default async function ApprovePage({
         </div>
       </div>
     </main>
+  );
+}
+
+function leftLabel(ms: number) {
+  if (ms <= 0) return "now";
+  const h = ms / 3_600_000;
+  return h < 1 ? `${Math.max(1, Math.round(ms / 60_000))}m` : h < 48 ? `${Math.round(h)}h` : `${Math.round(h / 24)}d`;
+}
+
+function Tile({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="rounded-xl bg-sunken px-3 py-2.5">
+      <div className="text-[11px] text-muted">{k}</div>
+      <div className="mt-0.5 text-sm font-medium tabular-nums text-fg">{v}</div>
+    </div>
+  );
+}
+
+function Expander({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-fg [&::-webkit-details-marker]:hidden">
+        {title}
+        <svg viewBox="0 0 16 16" className="h-4 w-4 text-muted transition-transform group-open:rotate-180" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden><path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </summary>
+      <div className="px-4 pb-4">{children}</div>
+    </details>
   );
 }
 

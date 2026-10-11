@@ -8,6 +8,7 @@ import { recordSnapshot, exitLevels, concentrationReport } from "./risk";
 import { scoreSettledMarkets } from "./calibration";
 import { researchAndForecast } from "./agent/discover";
 import type { Market, MonitorEvent, Position, TradeProposal } from "./types";
+import { markFor } from "./marks";
 
 const MOVE_TRIGGER = 0.08; // 8 points vs entry
 const EXIT_MARGIN = 0.05; // sell if our P(side) is this far below the bid
@@ -142,7 +143,7 @@ export async function runMonitor(userId?: string): Promise<MonitorEvent[]> {
     const bid = bidFor(market, pos.side);
     await tx((db) => {
       const p = db.positions.find((x) => x.id === pos.id);
-      if (p) { p.market = market!; if (bid != null) p.currentPrice = bid; p.updatedAt = now(); }
+      if (p) { p.market = market!; const mark = markFor(market!, p.side); if (mark != null) p.currentPrice = mark; p.updatedAt = now(); }
     });
     if (bid == null) continue;
 

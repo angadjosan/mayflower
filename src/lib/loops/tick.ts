@@ -2,19 +2,22 @@
 // whichever loops are due (last-run timestamps live in db.loopState), never two copies of the same loop at once.
 import { tx, now } from "../db";
 import { reconcileOrders } from "../execution";
+import { refreshMarks } from "../marks";
 import { runMonitor } from "../monitor";
 import { finalizeDueContests } from "../agent/group";
 import { syncAll } from "../connectors";
 import { runAlphaScan } from "./alpha";
 import { refreshPendingProposals } from "./pending";
 import { checkTheses } from "./thesis";
+import { runNewsCheckins } from "./newsCheckin";
+import { runMemoryLoop } from "../memory";
 
 const sec = (name: string, dflt: number) => {
   const n = Number(process.env[name]);
   return (isFinite(n) && n > 0 ? n : dflt) * 1000;
 };
 
-export const LOOP_NAMES = ["thesis", "pending", "alpha", "monitor"] as const;
+export const LOOP_NAMES = ["thesis", "pending", "alpha", "monitor", "news", "memory"] as const;
 export type LoopName = (typeof LOOP_NAMES)[number];
 
 export function loopIntervals(): Record<LoopName, number> {
@@ -23,6 +26,8 @@ export function loopIntervals(): Record<LoopName, number> {
     pending: sec("LOOP_PENDING_SEC", 600),
     alpha: sec("LOOP_ALPHA_SEC", 1800),
     monitor: sec("LOOP_MONITOR_SEC", 600),
+    news: sec("LOOP_NEWS_SEC", 3600),
+    memory: sec("LOOP_MEMORY_SEC", 1800),
   };
 }
 
@@ -33,6 +38,8 @@ const LOOPS: Record<LoopName, () => Promise<unknown>> = {
   thesis: checkTheses,
   pending: refreshPendingProposals,
   alpha: runAlphaScan,
+  news: () => runNewsCheckins(),
+  memory: runMemoryLoop,
   // The pre-existing 10-minute jobs: price/exit monitor, contest scoring, connector sync. Each isolated.
   monitor: async () => {
     const part = async <T,>(fn: () => Promise<T>) => {
@@ -48,6 +55,7 @@ const LOOPS: Record<LoopName, () => Promise<unknown>> = {
 export interface TickResult {
   at: string;
   reconciled: number | { error: string };
+  marks?: { marked: number; snapshots: number } | { error: string };
   ran: Record<string, { ms: number; result?: unknown; error?: string }>;
   skipped: Record<string, string>;
 }
@@ -89,6 +97,11 @@ export async function runTick(opts: { force?: LoopName[]; only?: LoopName[] } = 
     out.reconciled = (await reconcileOrders()).length;
   } catch (e) {
     out.reconciled = { error: (e as Error).message };
+  }
+  try {
+    out.marks = await refreshMarks();
+  } catch (e) {
+    out.marks = { error: (e as Error).message };
   }
 
   const intervals = loopIntervals();
