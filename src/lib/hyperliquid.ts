@@ -6,6 +6,7 @@ import { ExchangeClient, HttpTransport, InfoClient } from "@nktkas/hyperliquid";
 import { privateKeyToAccount } from "viem/accounts";
 import type { Hex } from "viem";
 import type { Market, Order, Side } from "./types";
+import { SIMULATED_BALANCE_USD } from "./simulated";
 
 // Like the Gemini sandbox, testnet is the default; mainnet orders also need an explicit opt-in.
 const NETWORK: "testnet" | "mainnet" = process.env.HYPERLIQUID_NETWORK === "mainnet" ? "mainnet" : "testnet";
@@ -227,7 +228,7 @@ export async function getHyperliquidOrderStatus(oid: string): Promise<{ status: 
 /** Free quote-token balance (total - hold) across the stablecoins outcomes settle in. */
 export async function getHyperliquidBalance(): Promise<{ availableUsd: number; mode: "testnet" | "live" | "simulated" }> {
   const u = user();
-  if (hyperliquidMode === "simulated" || !u) return { availableUsd: 1000, mode: "simulated" };
+  if (hyperliquidMode === "simulated" || !u) return { availableUsd: SIMULATED_BALANCE_USD, mode: "simulated" };
   try {
     const [state, spot] = await Promise.all([info[NETWORK].spotClearinghouseState({ user: u }), info[NETWORK].spotMeta()]);
     const quotes = new Set((listCache?.markets ?? []).map((m) => m.hyperliquid?.quoteToken).filter(Boolean) as string[]);

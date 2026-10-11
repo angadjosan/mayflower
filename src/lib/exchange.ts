@@ -4,6 +4,7 @@
 // Docs: https://developer.gemini.com/prediction-markets/getting-started
 import crypto from "crypto";
 import type { Market, Order, OrderMode, Side, Venue } from "./types";
+import { SIMULATED_BALANCE_USD } from "./simulated";
 import {
   listPolymarketMarkets, getPolymarketMarket, placePolymarketOrder, getPolymarketOrderStatus,
   getPolymarketBalance, isPolymarketId, polymarketMode, polymarketEnabled,
@@ -381,7 +382,7 @@ export async function getOrderStatus(
 export async function getBalance(venue: Venue = "gemini"): Promise<{ availableUsd: number; mode: OrderMode }> {
   if (venue === "polymarket") return getPolymarketBalance();
   if (venue === "hyperliquid") return getHyperliquidBalance();
-  if (exchangeMode === "simulated") return { availableUsd: 1000, mode: "simulated" };
+  if (exchangeMode === "simulated") return { availableUsd: SIMULATED_BALANCE_USD, mode: "simulated" };
   try {
     const resp = await privatePost<any[]>(BALANCES_PATH);
     const usd = (resp ?? []).find((b: any) => b.currency === "USD");

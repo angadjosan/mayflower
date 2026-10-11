@@ -6,6 +6,7 @@ import crypto from "crypto";
 import { privateKeyToAccount } from "viem/accounts";
 import { parseUnits, type Hex } from "viem";
 import type { Market, Order, Side } from "./types";
+import { SIMULATED_BALANCE_USD } from "./simulated";
 
 const GAMMA_URL = (process.env.POLYMARKET_GAMMA_URL || "https://gamma-api.polymarket.com").replace(/\/$/, "");
 const CLOB_URL = (process.env.POLYMARKET_CLOB_URL || "https://clob.polymarket.com").replace(/\/$/, "");
@@ -346,7 +347,7 @@ export async function getPolymarketOrderStatus(orderId: string): Promise<{ statu
 }
 
 export async function getPolymarketBalance(): Promise<{ availableUsd: number; mode: "live" | "simulated" }> {
-  if (polymarketMode !== "live") return { availableUsd: 1000, mode: "simulated" };
+  if (polymarketMode !== "live") return { availableUsd: SIMULATED_BALANCE_USD, mode: "simulated" };
   try {
     const r = await clob<any>("GET", "/balance-allowance", { query: { asset_type: "COLLATERAL", signature_type: String(SIGNATURE_TYPE) } });
     return { availableUsd: (num(r?.balance) ?? 0) / 1e6, mode: "live" };
