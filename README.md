@@ -14,7 +14,7 @@ With no keys set, every integration runs in a **mock or simulated mode, and the 
 
 | Integration | Env | Without keys |
 |---|---|---|
-| Google Gemini (LLM) | `GOOGLE_API_KEY` | heuristic profile parsing and forecasts |
+| Claude (LLM) | `ANTHROPIC_API_KEY` | heuristic profile parsing and forecasts |
 | Gemini Exchange (sandbox) | `GEMINI_EXCHANGE_API_KEY/SECRET` | public market data if reachable, otherwise mock markets; simulated orders |
 | Context.dev | `CONTEXT_DEV_API_KEY` | `[mock]` citations |
 | BlueBubbles (iMessage) | `BLUEBUBBLES_URL/PASSWORD` | web chat only |

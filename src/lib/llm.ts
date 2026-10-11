@@ -1,35 +1,46 @@
-// Google Gemini LLM wrapper (@google/genai). Falls back gracefully when no key is set.
-import { GoogleGenAI } from "@google/genai";
+// Claude LLM wrapper (@anthropic-ai/sdk). Falls back gracefully when no key is set.
+import Anthropic from "@anthropic-ai/sdk";
 
-const apiKey = process.env.GOOGLE_API_KEY;
-const model = process.env.GOOGLE_MODEL || "gemini-2.5-flash";
+const model = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
+const effort = (process.env.ANTHROPIC_EFFORT || "medium") as "low" | "medium" | "high" | "xhigh" | "max";
 
-export const llmEnabled: boolean = !!apiKey;
+export const llmEnabled: boolean = !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 
-let client: GoogleGenAI | null = null;
-function ai(): GoogleGenAI {
-  if (!client) client = new GoogleGenAI({ apiKey: apiKey! });
+let client: Anthropic | null = null;
+function ai(): Anthropic {
+  if (!client) client = new Anthropic();
   return client;
 }
 
-export async function generateText(prompt: string, system?: string): Promise<string> {
-  if (!llmEnabled) return "(LLM not configured: set GOOGLE_API_KEY to enable AI responses.)";
-  const res = await ai().models.generateContent({
+async function complete(prompt: string, system?: string): Promise<string> {
+  const res = await ai().beta.messages.create({
     model,
-    contents: prompt,
-    config: system ? { systemInstruction: system } : undefined,
+    max_tokens: 16000,
+    output_config: { effort },
+    // On a safety refusal, the API reroutes to a fallback model inside the same call.
+    betas: ["server-side-fallback-2026-07-01"],
+    fallbacks: "default",
+    ...(system ? { system } : {}),
+    messages: [{ role: "user", content: prompt }],
   });
-  return (res.text ?? "").trim();
+  if (res.stop_reason === "refusal") throw new Error("LLM_REFUSED");
+  return res.content
+    .map((b) => (b.type === "text" ? b.text : ""))
+    .join("")
+    .trim();
+}
+
+export async function generateText(prompt: string, system?: string): Promise<string> {
+  if (!llmEnabled) return "(LLM not configured: set ANTHROPIC_API_KEY to enable AI responses.)";
+  return complete(prompt, system);
 }
 
 export async function generateJSON<T>(prompt: string, system?: string): Promise<T> {
   if (!llmEnabled) throw new Error("LLM_DISABLED");
-  const res = await ai().models.generateContent({
-    model,
-    contents: prompt,
-    config: { responseMimeType: "application/json", ...(system ? { systemInstruction: system } : {}) },
-  });
-  let text = (res.text ?? "").trim();
+  const sys = [system, "Respond with a single valid JSON value only. No prose, no code fences."]
+    .filter(Boolean)
+    .join("\n\n");
+  let text = await complete(prompt, sys);
   text = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
   return JSON.parse(text) as T;
 }

@@ -1,9 +1,9 @@
 # Integrations
 
-## LLM: Google Gemini (`src/lib/llm.ts`)
-- Env: `GOOGLE_API_KEY`, `GOOGLE_MODEL` (default `gemini-2.5-flash`).
-- SDK: `@google/genai` `models.generateContent`; JSON mode uses `responseMimeType: "application/json"` (code fences are stripped before parsing).
-- If no key is set, `generateText` returns a canned "LLM not configured" string and `generateJSON` throws `Error("LLM_DISABLED")`. Callers fall back.
+## LLM: Claude (`src/lib/llm.ts`)
+- Env: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` (default `claude-opus-5-5`), `ANTHROPIC_EFFORT` (default `medium`; use `low` for snappier iMessage replies).
+- SDK: `@anthropic-ai/sdk` `beta.messages.create` with server-side refusal fallbacks (`fallbacks: "default"`). JSON mode is enforced via the system prompt (code fences are stripped before parsing).
+- Without a key: `generateText` returns a placeholder, `generateJSON` throws `LLM_DISABLED` and callers use heuristics.
 
 ## Exchange: Gemini Prediction Markets (`src/lib/exchange.ts`)
 - Env: `GEMINI_EXCHANGE_API_KEY`, `GEMINI_EXCHANGE_API_SECRET`, `GEMINI_EXCHANGE_BASE_URL` (default `https://api.sandbox.gemini.com`).
