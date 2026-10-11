@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { load } from "@/lib/db";
-import { callContext, userIdFromCallToken } from "@/lib/calls";
+import { userIdFromCallToken } from "@/lib/calls";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,11 +15,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   if (!(await load()).users.some((u) => u.id === userId)) {
     return new NextResponse("this call link expired. text mayflower \"call me\" for a new one.", { status: 410 });
   }
-  const vars = await callContext(userId, new URL(req.url).searchParams.get("p") ?? undefined);
-
+  // Only the signed token and an idea id go to the talk page; what the agent says comes from our briefing tool.
   const url = new URL("https://elevenlabs.io/app/talk-to");
   url.searchParams.set("agent_id", agentId);
   url.searchParams.set("var_call_token", token);
-  for (const [k, v] of Object.entries(vars)) url.searchParams.set(`var_${k}`, v);
+  url.searchParams.set("var_proposal_id", new URL(req.url).searchParams.get("p") ?? "");
   return NextResponse.redirect(url.toString(), 302);
 }
