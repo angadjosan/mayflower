@@ -2,7 +2,8 @@
   "name": "mayflower",
   "version": "0.1.0",
   "private": true,
-  "description": "Mayflower — your personal AI hedge fund for prediction markets",
+  "type": "module",
+  "description": "Mayflower \u2014 your personal AI hedge fund for prediction markets",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -17,12 +18,15 @@
     "worker": "tsx --tsconfig apps/web/tsconfig.json scripts/worker.ts",
     "typecheck": "tsc -p packages/shared && tsc -p packages/risk && tsc -p packages/gemini-markets && tsc -p packages/context && tsc -p packages/agents && tsc -p apps/web --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:migrate": "tsx --tsconfig apps/web/tsconfig.json scripts/migrate.ts",
+    "dev:demo": "MAYFLOWER_DEMO_MODE=true npm run dev -w @mayflower/web"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",
     "tsx": "^4.20.0",
     "typescript": "5.9.3",
     "vitest": "^5.0.3"
-  }
+  },
+  "dependencies": {}
 }

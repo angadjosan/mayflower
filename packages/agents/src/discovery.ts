@@ -127,32 +127,52 @@ function marketQuality(m: MarketContract): number {
   return 0.3 * mid + 0.25 * liq + 0.2 * tight + 0.15 * horizon + 0.1 * moved;
 }
 
+function hasWord(text: string, k: string): boolean {
+  return new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i").test(text);
+}
+
 export function rankPersonalized(markets: MarketContract[], profile: DiscoveryProfile, terms: SearchTerm[]): Candidate[] {
-  const keywords = new Map<string, string>();
+  // Direct terms are what the user actually named (or search terms derived from them);
+  // expanded terms are topic keywords (e.g. every NFL team for "NFL football") and count for less.
+  const direct = new Map<string, string>();
+  const expanded = new Map<string, string>();
   for (const i of profile.interests) {
-    keywords.set(i.toLowerCase(), i);
-    for (const t of detectTopics(i)) for (const k of t.keywords) keywords.set(k, i);
+    if (detectTopics(i).length === 0 || detectEntities(i).length > 0) direct.set(i.toLowerCase(), i);
+    for (const e of detectEntities(i)) direct.set(e, i);
+    for (const t of detectTopics(i)) for (const k of t.keywords) expanded.set(k, i);
   }
   for (const b of profile.beliefs) {
-    for (const e of detectEntities(`${b.topic} ${b.belief}`)) keywords.set(e, b.topic);
-    for (const t of detectTopics(`${b.topic} ${b.belief}`)) for (const k of t.keywords) keywords.set(k, b.topic);
+    for (const e of detectEntities(`${b.topic} ${b.belief}`)) direct.set(e, b.topic);
+    for (const t of detectTopics(`${b.topic} ${b.belief}`)) for (const k of t.keywords) expanded.set(k, b.topic);
   }
-  for (const t of terms) keywords.set(t.term.toLowerCase(), t.term);
+  for (const t of terms) direct.set(t.term.toLowerCase(), t.term);
+  for (const k of direct.keys()) expanded.delete(k);
+
   const cands: Candidate[] = [];
   for (const m of markets) {
     if (!validateContract(m).ok || isExcluded(m, profile.excludedTopics)) continue;
     const text = textOf(m);
-    let hits = 0;
+    const label = m.label.toLowerCase();
+    let directHits = 0;
+    let expandedHits = 0;
+    let labelHit = false;
     let matched: string | null = null;
-    for (const [k, origin] of keywords) {
-      const re = new RegExp(`(^|[^a-z0-9])${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`, "i");
-      if (re.test(text)) {
-        hits += k.length > 4 ? 2 : 1;
+    for (const [k, origin] of direct) {
+      if (hasWord(text, k)) {
+        directHits++;
+        matched ??= origin;
+        if (hasWord(label, k)) labelHit = true;
+      }
+    }
+    for (const [k, origin] of expanded) {
+      if (hasWord(text, k)) {
+        expandedHits++;
         matched ??= origin;
       }
     }
-    if (hits === 0) continue;
-    const score = Math.min(1, hits / 4) * 0.7 + marketQuality(m) * 0.3;
+    if (directHits === 0 && expandedHits === 0) continue;
+    const relevance = Math.min(1, (3 * directHits + expandedHits) / 6);
+    const score = 0.65 * relevance + (labelHit ? 0.15 : 0) + 0.2 * marketQuality(m);
     cands.push({ market: m, kind: "personalized", score, reason: `Matches your interest in ${matched}`, matchedInterest: matched });
   }
   return onePerEvent(cands);

@@ -166,3 +166,42 @@ export function profileSummary(user: User, theses: Thesis[]): string {
   if (user.excludedTopics.length) parts.push(`Skipping: ${user.excludedTopics.join(", ")}.`);
   return parts.join(" ");
 }
+
+/** Direct edits from the dashboard profile form (exact values, validated). */
+export async function updateProfileDirect(
+  userId: string,
+  input: { riskBudget: number; maxPerPosition: number; maxTotalExposure: number; riskStyle: RiskStyle; interests: string[]; excludedTopics: string[]; notifyLevel: "important" | "all" | "none"; displayName?: string | null },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!(input.riskBudget > 0)) return { ok: false, error: "Risk budget must be positive." };
+  if (!(input.maxTotalExposure > 0) || input.maxTotalExposure > input.riskBudget) return { ok: false, error: "Total exposure must be positive and no more than your risk budget." };
+  if (!(input.maxPerPosition > 0) || input.maxPerPosition > input.maxTotalExposure) return { ok: false, error: "Per-position limit must be positive and no more than your total exposure limit." };
+  const db = await getDb();
+  await db
+    .update(schema.users)
+    .set({
+      riskBudget: round(input.riskBudget, 2),
+      maxPerPosition: round(input.maxPerPosition, 2),
+      maxTotalExposure: round(input.maxTotalExposure, 2),
+      riskStyle: input.riskStyle,
+      interests: dedupe(input.interests),
+      excludedTopics: dedupe(input.excludedTopics.map((x) => x.toLowerCase())),
+      notifyLevel: input.notifyLevel,
+      ...(input.displayName !== undefined ? { displayName: input.displayName || null } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.users.id, userId));
+  await audit({ userId, actor: "user", action: "profile.updated", details: { source: "dashboard", ...input } });
+  return { ok: true };
+}
+
+export async function addThesis(userId: string, t: { topic: string; belief: string; stance: "bullish" | "bearish" | "neutral"; confidence: number }): Promise<void> {
+  const db = await getDb();
+  await db.insert(schema.userTheses).values({ userId, topic: t.topic.slice(0, 80), belief: t.belief.slice(0, 400), stance: t.stance, confidence: Math.min(1, Math.max(0.05, t.confidence)), source: "dashboard" });
+  await audit({ userId, actor: "user", action: "thesis.added", details: t });
+}
+
+export async function deactivateThesis(userId: string, thesisId: string): Promise<void> {
+  const db = await getDb();
+  await db.update(schema.userTheses).set({ active: false, updatedAt: new Date() }).where(and(eq(schema.userTheses.id, thesisId), eq(schema.userTheses.userId, userId)));
+  await audit({ userId, actor: "user", action: "thesis.removed", refType: "thesis", refId: thesisId });
+}

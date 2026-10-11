@@ -14,7 +14,8 @@ import { getMarketRow, groupOf, latestQuotes, quoteFromRow, refreshContract } fr
 import { monitorUser, recentMonitorEvents } from "./monitor";
 import { runDiscovery, type AnalyzedMarket } from "./pipeline";
 import { portfolioOverview } from "./portfolio";
-import { approveByCode, createProposal, describeTerms, getProposal, issueApprovalChallenge, pendingProposals, rejectProposal } from "./proposals";
+import { proposeExit } from "./exits";
+import { approveByCode, describeTerms, getProposal, issueApprovalChallenge, pendingProposals, rejectProposal } from "./proposals";
 import { sendToUser } from "./notify";
 import { activeTheses, applyProfileUpdate, effectiveLimits, getUser, profileSummary, setOnboardingState, setTradingPaused } from "./users";
 
@@ -263,47 +264,9 @@ async function handleChangePosition(user: User, fraction: number, reference: str
   const options = rows.map((r) => ({ position: r.position, label: r.market.label }));
   const target = matchPosition(options, reference);
   if (!target) return `Which position?\n${options.map((o, i) => `${i + 1}) ${outcomeLabel(o.position.outcome as Outcome)} “${o.label}” (${round(o.position.quantity, 2)} contracts)`).join("\n")}`;
-  const fresh = await refreshContract(target.position.symbol, target.position.eventTicker);
-  const outcome = target.position.outcome as Outcome;
-  const bid = fresh.contract ? bidFor(fresh.contract.quote, outcome) : null;
-  if (bid === null) return `There's no bid for “${target.label}” right now, so a sell order couldn't fill. I'll keep watching it.`;
-  const inc = fresh.contract?.increments.quantityIncrement ?? 1;
-  const qty = fraction >= 1 ? target.position.quantity : Math.max(inc, Math.floor((target.position.quantity * fraction) / inc) * inc);
-  const p = await createProposal({
-    userId: user.id,
-    symbol: target.position.symbol,
-    kind: fraction >= 1 ? "close" : "reduce",
-    discovery: "user_request",
-    decision: "trade",
-    side: "sell",
-    outcome,
-    quantity: round(qty, 8),
-    limitPrice: bid,
-    maxCost: 0,
-    estProbability: null,
-    marketProbability: null,
-    edge: null,
-    expectedValue: null,
-    sizing: { kind: "exit", fraction, exitPrice: bid, proceeds: round(qty * bid, 2), realizedVsCost: round(qty * (bid - target.position.avgPrice), 2) },
-    rationale: {
-      title: target.label,
-      whatHasToHappen: `Sell ${round(qty, 2)} ${outcomeLabel(outcome)} at ${formatCents(bid)} or better.`,
-      whyNow: "You asked to reduce this position.",
-      thesis: target.position.latestAssessment?.summary ?? target.position.thesis?.text ?? "",
-      discoveryReason: "Your request",
-      sizingSummary: `About ${formatUsd(qty * bid)} back (${formatUsd(qty * (bid - target.position.avgPrice), { signed: true })} vs. what you paid for those contracts).`,
-      noTradeReason: null,
-      risks: ["A limit order may not fill if the bid moves away; thin markets can gap."],
-      resolutionRisks: [],
-      whatWouldChangeMind: [],
-      watchConditions: [],
-      hedgeNote: null,
-      criticIssues: [],
-      method: { forecast: "heuristic", critic: "heuristic", research: "none", marketData: fresh.contract?.source ?? "live" },
-    },
-    relatedPositionId: target.position.id,
-    executionMode: target.position.mode,
-  });
+  const res = await proposeExit(user.id, target.position.id, fraction);
+  if (!res.ok) return res.error;
+  const p = res.proposal;
   return challengeText(user, p);
 }
 
