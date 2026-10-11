@@ -1,3 +1,27 @@
+# Voice notes in iMessage (ElevenLabs)
+
+People can talk to Mayflower instead of typing: hold the mic button in iMessage and send a voice memo. This is the street-interview path.
+
+- **In:** a voice memo is transcribed with ElevenLabs speech-to-text (`scribe_v2`) and handled exactly like a typed text.
+- **Out:** a reply to a voice memo comes back as a voice note (ElevenLabs text-to-speech, `eleven_flash_v2_5`) when it is a real conversational answer. Quick acks ("got it", under ~90 spoken characters) stay as texts. Links and `APPROVE` codes are never read out; they follow the voice note as texts, and the voice says "the link's in the next text".
+- Typing "send me a voice memo", "say it out loud" or "talk to me" also gets a spoken answer. A typed conversation stays typed.
+- **Fallbacks:** no `ELEVENLABS_API_KEY` means voice memos get "i can't listen to voice memos yet, mind typing that one?" and every reply is text. Any text-to-speech or send failure falls back to the normal texts.
+
+| Piece | File |
+|---|---|
+| When to speak, what to say (pure, tested) | `src/lib/voiceNotes.ts` + `voiceNotes.test.ts` |
+| ElevenLabs STT / TTS calls | `src/lib/elevenlabs.ts` |
+| Download a voice memo, send an audio file | `src/lib/bluebubbles.ts` (`downloadAttachment`, `sendAudio`) |
+| Voice memo detection + transcription | `src/app/api/bluebubbles/webhook/route.ts` |
+| Voice note vs texts at send time | `src/lib/notify.ts` (`sendToUser`) |
+
+Measured on the bridge Mac (BlueBubbles 1.9.9, macOS 26.5.2, 2026-10-11):
+- A voice memo arrives with empty `text`, `isAudioMessage: true`, and an attachment with uti `com.apple.coreaudio-format`. BlueBubbles labels it `audio/mp3`, but the default download is the CAF converted to AAC in an `.m4a` container, which speech-to-text accepts. No ffmpeg needed.
+- Our replies go out as a playable audio attachment (`mayflower.mp3`), not iMessage's native voice-memo bubble. The native bubble needs BlueBubbles' Private API, which is off on that Mac (it needs SIP disabled).
+- Sending an attachment to the `any;-;<handle>` chat delivered in about 1.4 s.
+
+Env: `ELEVENLABS_API_KEY` (required), optional `ELEVENLABS_VOICE_ID`, `ELEVENLABS_TTS_MODEL`, `ELEVENLABS_STT_MODEL`.
+
 # Phone calls with Mayflower (ElevenLabs, P3 stretch)
 
 Users can call Mayflower and talk to the same agent they text. The rules don't change:

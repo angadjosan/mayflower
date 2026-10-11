@@ -4,7 +4,9 @@ import { getOrCreateUser } from "@/lib/db";
 import { storeMessage, sendToUser } from "@/lib/notify";
 import { handleMessage } from "@/lib/agent/chat";
 import { handleGroupMessage } from "@/lib/agent/group";
-import { bbEnabled } from "@/lib/bluebubbles";
+import { bbEnabled, downloadAttachment, isAudioAttachment, type BBAttachment } from "@/lib/bluebubbles";
+import { elevenEnabled, transcribe } from "@/lib/elevenlabs";
+import { wantsVoice } from "@/lib/voiceNotes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +15,10 @@ export const maxDuration = 300;
 
 interface BBPayload {
   type?: string;
-  data?: { guid?: string; text?: string; isFromMe?: boolean; handle?: { address?: string }; chats?: { guid?: string }[] };
+  data?: {
+    guid?: string; text?: string | null; isFromMe?: boolean; isAudioMessage?: boolean;
+    handle?: { address?: string }; chats?: { guid?: string }[]; attachments?: BBAttachment[];
+  };
 }
 
 function secretOk(given: string | null): boolean {
@@ -39,9 +44,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const body = (await req.json().catch(() => ({}))) as BBPayload;
-  const text = body.data?.text?.trim();
+  // An attachment-only message carries U+FFFC (or nothing) as its text.
+  const typed = body.data?.text?.replace(/\uFFFC/g, "").trim() ?? "";
   const address = body.data?.handle?.address;
-  if (body.type !== "new-message" || body.data?.isFromMe || !text || !address || !firstTime(body.data?.guid)) {
+  // A voice memo (isAudioMessage, or an audio attachment) is transcribed and handled like a text.
+  const memo = body.data?.attachments?.find(isAudioAttachment);
+  const voiceIn = Boolean(memo?.guid) && (Boolean(body.data?.isAudioMessage) || !typed);
+  if (body.type !== "new-message" || body.data?.isFromMe || (!typed && !voiceIn) || !address || !firstTime(body.data?.guid)) {
     return NextResponse.json({ ok: true, ignored: true });
   }
   const chatGuid = body.data?.chats?.[0]?.guid;
@@ -52,6 +61,19 @@ export async function POST(req: Request) {
   }
   // Research can take a while; acknowledge the webhook now and reply over iMessage when done.
   after(async () => {
+    let text = typed;
+    if (voiceIn) {
+      const heard = await hear(memo!.guid!);
+      if (!heard) {
+        if (isGroup) return;
+        const user = await getOrCreateUser({ handle: address });
+        await sendToUser(user.id, elevenEnabled()
+          ? "couldn't quite catch that voice memo\nmind sending it again or typing it?"
+          : "i can't listen to voice memos yet\nmind typing that one?");
+        return;
+      }
+      text = heard;
+    }
     // Group chats have a ";+;" chat guid; replies go back into the group.
     if (chatGuid?.includes(";+;")) {
       try {
@@ -70,7 +92,20 @@ export async function POST(req: Request) {
       console.error(e);
       reply = "ah something broke on my end\ngive me a sec and send that again";
     }
-    await sendToUser(user.id, reply);
+    await sendToUser(user.id, reply, { voiceIn, askedForVoice: wantsVoice(text) });
   });
   return NextResponse.json({ ok: true });
+}
+
+/** Transcribe a voice memo. null when voice is off, the download fails, or nothing was said. */
+async function hear(attachmentGuid: string): Promise<string | null> {
+  if (!elevenEnabled()) return null;
+  const file = await downloadAttachment(attachmentGuid);
+  if (!file) return null;
+  try {
+    return (await transcribe(file.data, file.filename, file.mime)) || null;
+  } catch (e) {
+    console.error("[voice memo]", e);
+    return null;
+  }
 }
