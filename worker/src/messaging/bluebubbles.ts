@@ -32,25 +32,32 @@ export class BlueBubblesMessenger implements Messenger {
   }
 
   async send({ to, text, audio }: OutboundMessage): Promise<void> {
-    const chatGuid = `iMessage;-;${to}`;
-    if (text) await this.sendText(to, chatGuid, text);
+    const chatGuid = text ? await this.sendText(to, text) : `any;-;${to}`;
     if (audio) await this.sendAttachment(chatGuid, audio);
   }
 
-  private async sendText(to: string, chatGuid: string, text: string): Promise<void> {
-    const res = await fetch(endpoint(this.bb, '/message/text'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chatGuid, tempGuid: `mf-${randomUUID()}`, message: text, method: 'apple-script' }),
-    });
-    const raw = await res.text();
-    // BlueBubbles can answer HTTP 200 with an error envelope; only a clean status counts as sent
-    let env: { status?: number; error?: unknown } = {};
-    try { env = JSON.parse(raw); } catch { /* non-JSON body */ }
-    if (res.ok && !env.error && (env.status === undefined || env.status < 400)) return;
-    const firstError = raw.slice(0, 500);
-    const chatMissing = /chat[\s\S]{0,80}?(not found|does not exist|doesn't exist)|failed to find chat/i.test(firstError);
-    if (!chatMissing) throw new Error(`BlueBubbles /message/text failed ${res.status}: ${firstError}`);
+  // macOS 26 (Tahoe) stores 1:1 chats as `any;-;<handle>`: sending to `iMessage;-;` there
+  // still delivers but hangs until timeout (measured 2026-10-11), so try `any;-;` first.
+  // Only a definite error response moves on to the next guid; a timeout may have delivered,
+  // so it is thrown rather than retried (a retry would double-text the user).
+  private async sendText(to: string, text: string): Promise<string> {
+    let lastError = '';
+    for (const chatGuid of [`any;-;${to}`, `iMessage;-;${to}`]) {
+      const res = await fetch(endpoint(this.bb, '/message/text'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatGuid, tempGuid: `mf-${randomUUID()}`, message: text, method: 'apple-script' }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      const raw = await res.text();
+      // BlueBubbles can answer HTTP 200 with an error envelope; only a clean status counts as sent
+      let env: { status?: number; error?: unknown } = {};
+      try { env = JSON.parse(raw); } catch { /* non-JSON body */ }
+      if (res.ok && !env.error && (env.status === undefined || env.status < 400)) return chatGuid;
+      lastError = `${res.status}: ${raw.slice(0, 500)}`;
+    }
+    const chatMissing = /chat[\s\S]{0,80}?(not found|does not exist|doesn't exist)|failed to find chat/i.test(lastError);
+    if (!chatMissing) throw new Error(`BlueBubbles /message/text failed ${lastError}`);
     await postJson(this.bb, '/chat/new', {
       addresses: [to],
       message: text,
@@ -58,6 +65,7 @@ export class BlueBubblesMessenger implements Messenger {
       method: 'apple-script',
       tempGuid: `mf-${randomUUID()}`,
     });
+    return `any;-;${to}`;
   }
 
   private async sendAttachment(chatGuid: string, audio: NonNullable<OutboundMessage['audio']>): Promise<void> {
@@ -67,7 +75,7 @@ export class BlueBubblesMessenger implements Messenger {
     form.set('name', audio.filename);
     form.set('method', 'apple-script');
     form.set('attachment', new Blob([new Uint8Array(audio.data)], { type: audio.mime }), audio.filename);
-    const res = await fetch(endpoint(this.bb, '/message/attachment'), { method: 'POST', body: form });
+    const res = await fetch(endpoint(this.bb, '/message/attachment'), { method: 'POST', body: form, signal: AbortSignal.timeout(30_000) });
     await check(res, '/message/attachment');
   }
 }
