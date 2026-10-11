@@ -21,10 +21,14 @@ export default async function ApprovePage({ params, searchParams }: { params: Pr
   if (!p) return <div className="card">Proposal not found.</div>;
   const market = await c.repo.getMarket(p.marketId);
   if (confirm === "1" && p.status === "pending_approval") {
+    let result: { order?: { mode: string; status: string; exchangeOrderId: string | null; error?: string | null }; error?: string } = {};
     try {
       const { order } = await approveAndExecute(c, { userId: payload.userId, proposalId: payload.proposalId, version: payload.version, channel: "web", evidence: `signed-link:${token.slice(-8)}` });
-      return <div className="card space-y-2"><h1 className="font-semibold">Order submitted <ModeBadge mode={order.mode} /></h1><p className="text-sm">Exchange status: <b>{order.status}</b>{order.exchangeOrderId ? ` · id ${order.exchangeOrderId}` : ""}{order.error ? ` · ${order.error}` : ""}</p><p className="text-xs text-muted">{order.status === "filled" ? "Filled." : "Not filled yet — Mayflower will tell you when it is."}</p><Link href="/" className="underline text-sm">Dashboard</Link></div>;
-    } catch (e) { return <div className="card">Could not approve: {(e as Error).message}</div>; }
+      result = { order };
+    } catch (e) { result = { error: (e as Error).message }; }
+    if (result.error || !result.order) return <div className="card">Could not approve: {result.error}</div>;
+    const order = result.order;
+    return <div className="card space-y-2"><h1 className="font-semibold">Order submitted <ModeBadge mode={order.mode} /></h1><p className="text-sm">Exchange status: <b>{order.status}</b>{order.exchangeOrderId ? ` · id ${order.exchangeOrderId}` : ""}{order.error ? ` · ${order.error}` : ""}</p><p className="text-xs text-muted">{order.status === "filled" ? "Filled." : "Not filled yet — Mayflower will tell you when it is."}</p><Link href="/" className="underline text-sm">Dashboard</Link></div>;
   }
   return (
     <form className="card space-y-3" method="GET">

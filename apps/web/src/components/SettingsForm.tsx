@@ -33,7 +33,7 @@ export function SettingsForm({ limits, theses, connection, exchangeMode, oauthAv
       </div>
       <div className="card text-sm space-y-1">
         <h2 className="font-semibold">What Mayflower knows about you</h2>
-        {theses.length ? <ul className="list-disc pl-4">{theses.map((t, i) => <li key={i}><b>{t.topic}</b>: {t.belief}{t.isInterest ? " (interest)" : ""}</li>)}</ul> : <p className="text-muted">Nothing yet — tell Mayflower in chat. You can update these naturally (“I'm less confident about that now”).</p>}
+        {theses.length ? <ul className="list-disc pl-4">{theses.map((t, i) => <li key={i}><b>{t.topic}</b>: {t.belief}{t.isInterest ? " (interest)" : ""}</li>)}</ul> : <p className="text-muted">Nothing yet — tell Mayflower in chat. You can update these naturally (“I&apos;m less confident about that now”).</p>}
       </div>
       <div className="card text-sm space-y-2">
         <h2 className="font-semibold">Gemini account <span className="badge">{exchangeMode}</span></h2>
