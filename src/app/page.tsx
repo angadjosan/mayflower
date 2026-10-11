@@ -14,7 +14,10 @@ import RiskPanel from "@/components/RiskPanel";
 import { post, type DashState, type ProposalView } from "@/components/state";
 import { TickerStrip } from "@/components/TickerStrip";
 import { TopBar } from "@/components/TopBar";
+import { MotionConfig } from "motion/react";
+import { HeroBackdrop, Reveal } from "@/components/fx";
 import { Icon } from "@/components/icons";
+import { TabBar } from "@/components/TabBar";
 import { Logo, SectionHead } from "@/components/ui";
 
 const TABS = [
@@ -104,7 +107,9 @@ export default function Dashboard() {
   const working = workingOrders(s.orders);
 
   return (
-    <div className="min-h-screen bg-bg pb-[env(safe-area-inset-bottom)]">
+    <MotionConfig reducedMotion="user">
+    <div className="relative isolate min-h-screen bg-bg pb-[env(safe-area-inset-bottom)]">
+      <HeroBackdrop />
       <header className="sticky top-0 z-30 border-b border-line bg-bg/85 backdrop-blur-xl backdrop-saturate-150">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <TopBar s={s} busy={busy} onTogglePause={() => run(() => post("/api/settings", { paused: !s.user.paused }))} />
@@ -125,7 +130,8 @@ export default function Dashboard() {
 
         <PortfolioHero s={s} />
 
-        <section className="mt-12">
+        <Reveal className="mt-12">
+        <section>
           <SectionHead
             title="Ideas"
             count={pending.length}
@@ -136,8 +142,10 @@ export default function Dashboard() {
             onReject={(p: ProposalView) => run(() => post(`/api/proposals/${p.id}/reject`, { token: p.approvalToken }), "Idea rejected.")}
           />
         </section>
+        </Reveal>
 
-        <section className="mt-12">
+        <Reveal className="mt-12">
+        <section>
           <SectionHead title="Positions" count={openPositions.length} />
           <Positions positions={s.positions} events={s.monitorEvents} onChanged={load} />
           {working.length > 0 && (
@@ -149,22 +157,10 @@ export default function Dashboard() {
             </div>
           )}
         </section>
+        </Reveal>
 
         <section className="mt-12">
-          <div className="mb-4 grid grid-cols-6 gap-1 rounded-2xl bg-sunken p-1" role="tablist">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                role="tab"
-                aria-selected={tab === t.key}
-                onClick={() => setTab(t.key)}
-                className={`flex flex-col items-center justify-center gap-1 rounded-xl py-2 text-[11px] font-medium transition-colors sm:flex-row sm:gap-1.5 sm:text-[13px] ${tab === t.key ? "bg-surface text-fg shadow-[0_1px_2px_rgba(0,0,0,0.12)] ring-1 ring-line-strong" : "text-muted hover:text-fg"}`}
-              >
-                <Icon name={t.icon} className="h-4 w-4" />
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <TabBar tabs={TABS} value={tab} onChange={setTab} />
           <div role="tabpanel" className="animate-fade" key={tab}>
             {tab === "memory" && <MemoryPanel />}
             {tab === "risk" && <RiskPanel />}
@@ -211,5 +207,6 @@ export default function Dashboard() {
         </div>
       )}
     </div>
+    </MotionConfig>
   );
 }

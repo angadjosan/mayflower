@@ -1,5 +1,6 @@
 "use client";
 import type { AuditEvent } from "@/lib/types";
+import { Feed } from "./Feed";
 import { Icon, type IconName } from "./icons";
 import { IMESSAGE_ADDRESS, IconButton, InfoTip, Logo, relTime, smsHref } from "./ui";
 
@@ -19,20 +20,17 @@ export function ActivityLog({ audit }: { audit: AuditEvent[] }) {
     );
   }
   return (
-    <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
-      {recent.map((a) => {
+    <Feed
+      items={recent.map((a) => {
         const who = ACTOR[a.actor] ?? ACTOR.system;
-        return (
-          <li key={a.id} className="flex items-center gap-3 px-4 py-2.5">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sunken text-fg-2" title={who.label}>
-              <Icon name={who.icon} className="h-3.5 w-3.5" />
-            </span>
-            <span className="min-w-0 flex-1 truncate text-[13px] text-fg-2 first-letter:uppercase" title={a.ref}>{a.action.replace(/[._]/g, " ")}</span>
-            <span className="num shrink-0 text-[11px] text-subtle">{relTime(a.createdAt)}</span>
-          </li>
-        );
+        return {
+          id: a.id,
+          icon: <Icon name={who.icon} className="h-4 w-4" />,
+          title: <span className="font-medium first-letter:uppercase">{a.action.replace(/[._]/g, " ")}</span>,
+          meta: relTime(a.createdAt),
+        };
       })}
-    </ul>
+    />
   );
 }
 

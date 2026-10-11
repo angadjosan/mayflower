@@ -1,6 +1,10 @@
 "use client";
 import { useState } from "react";
 import { Icon } from "./icons";
+import { useResolvedTheme } from "./hooks";
+import ClickSpark from "./reactbits/ClickSpark";
+import Magnet from "./reactbits/Magnet";
+import SpotlightCard from "./reactbits/SpotlightCard";
 import type { ProposalView } from "./state";
 import { Chip, CitationLink, Eyebrow, IconButton, OddsBar, Sheet, SideTag, SimulatedChip, VenueBadge, cents, pct, relTime, smsHref, usd } from "./ui";
 
@@ -69,11 +73,22 @@ function Block({ label, children }: { label: string; children: React.ReactNode }
 
 function IdeaCard({ p, onReject }: { p: ProposalView; onReject: (p: ProposalView) => void }) {
   const [why, setWhy] = useState(false);
+  const theme = useResolvedTheme();
   const edgePts = Math.round(p.edge * 100);
   const kind = KIND[p.kind];
   const buying = p.kind === "open" || p.kind === "hedge";
   return (
-    <article className="animate-rise flex flex-col rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5">
+    <SpotlightCard
+      theme={theme}
+      spotlightColor="var(--accent)"
+      intensity={theme === "dark" ? 0.22 : 0.14}
+      spotlightSize={320}
+      borderGlow={0.6}
+      className="animate-rise !rounded-2xl !p-0"
+      style={{ "--spotlight-card-surface": "var(--surface)", "--spotlight-card-border": "var(--line)", "--spotlight-card-shadow": "var(--shadow)" } as React.CSSProperties}
+    >
+    <ClickSpark sparkColor={theme === "dark" ? "#22d3ee" : "#0891b2"} sparkRadius={18} sparkCount={9} duration={420}>
+    <article className="flex h-full flex-col p-4 sm:p-5">
       <div className="flex items-center gap-1.5">
         <VenueBadge venue={p.venue} />
         {p.mode === "simulated" && <SimulatedChip />}
@@ -105,12 +120,14 @@ function IdeaCard({ p, onReject }: { p: ProposalView; onReject: (p: ProposalView
         </Chip>
         <IconButton label="Why" onClick={() => setWhy(true)} className="h-8 w-8"><Icon name="info" /></IconButton>
         <IconButton label="Reject" onClick={() => onReject(p)} className="h-8 w-8 hover:text-down"><Icon name="x" /></IconButton>
+        <Magnet wrapperClassName="ml-auto" padding={30} magnetStrength={5}>
         <a
           href={p.approvalUrl}
-          className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-full bg-ink pl-4 pr-3 text-[13px] font-medium text-ink-fg transition-opacity hover:opacity-90"
+          className="inline-flex h-9 items-center gap-1.5 rounded-full bg-ink pl-4 pr-3 text-[13px] font-medium text-ink-fg transition-opacity hover:opacity-90"
         >
           Approve <Icon name="arrowRight" className="h-3.5 w-3.5" />
         </a>
+        </Magnet>
       </div>
 
       <WhySheet
@@ -135,6 +152,8 @@ function IdeaCard({ p, onReject }: { p: ProposalView; onReject: (p: ProposalView
         rules={p.market.rules}
       />
     </article>
+    </ClickSpark>
+    </SpotlightCard>
   );
 }
 

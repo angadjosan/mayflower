@@ -1,6 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
 import { AreaChart, type Point } from "./AreaChart";
+import CountUp from "./reactbits/CountUp";
+import DecryptedText from "./reactbits/DecryptedText";
 import { Icon } from "./icons";
 import type { DashState } from "./state";
 import { Chip, Eyebrow, InfoTip, Ring, Segmented, pnlTone, signedPct, signedUsd, time, usd, usdCompact } from "./ui";
@@ -93,13 +95,24 @@ export function PortfolioHero({ s }: { s: DashState }) {
       {/* Value + chart */}
       <div className="min-w-0">
         <div className="num flex items-baseline text-[44px] font-semibold leading-none tracking-[-0.035em] text-fg sm:text-[60px]">
-          {whole}
+          {hover ? (
+            whole
+          ) : (
+            <span>
+              $<CountUp to={Math.floor(shown)} from={Math.floor(shown * 0.94)} separator="," duration={1.1} />
+            </span>
+          )}
           <span className="text-[0.5em] text-muted">.{frac}</span>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Chip tone={pnlTone(delta)}>
             <Icon name="arrowUpRight" className={`h-3 w-3 ${delta < 0 ? "rotate-90" : ""}`} />
-            {signedUsd(delta)} · {signedPct(deltaPct)}
+            {hover ? signedUsd(delta) : (
+              <span>
+                {delta > 0 ? "+" : delta < 0 ? "−" : ""}$<CountUp to={Math.abs(delta)} from={0} decimals={2} separator="," duration={1.1} />
+              </span>
+            )}{" "}
+            · {signedPct(deltaPct)}
           </Chip>
           <span className="text-xs text-subtle">{hover ? time(hover.at) : range === "All" ? "All time" : range}</span>
         </div>
@@ -136,7 +149,11 @@ export function PortfolioHero({ s }: { s: DashState }) {
             <Eyebrow className="flex items-center gap-1.5"><Icon name="wallet" className="h-3.5 w-3.5" />Funds</Eyebrow>
             <InfoTip title="Test funds">
               <p>Buying power on test venues: the Gemini sandbox account and your Hyperliquid test wallet (testUSDC). None of it is real money.</p>
-              {w && <p className="font-mono text-xs text-muted break-all">{w.address}</p>}
+              {w && (
+                <p className="font-mono text-xs text-muted break-all">
+                  <DecryptedText text={w.address} animateOn="view" sequential speed={18} revealDirection="start" encryptedClassName="text-subtle" />
+                </p>
+              )}
             </InfoTip>
           </div>
           <ul className="mt-2 space-y-2.5">
@@ -155,6 +172,11 @@ export function PortfolioHero({ s }: { s: DashState }) {
               </li>
             ))}
           </ul>
+          {w && (
+            <div className="mt-2.5 truncate font-mono text-[10.5px] text-subtle" title={w.address}>
+              <DecryptedText text={`${w.address.slice(0, 6)}…${w.address.slice(-4)}`} animateOn="view" sequential speed={40} encryptedClassName="opacity-60" />
+            </div>
+          )}
         </Tile>
 
         <Tile className="col-span-2 lg:col-span-1">

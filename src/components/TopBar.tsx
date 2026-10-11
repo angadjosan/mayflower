@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { DashState } from "./state";
+import GradientText from "./reactbits/GradientText";
+import Magnet from "./reactbits/Magnet";
 import { Logo, MessageIcon, TestnetPill, Toggle, smsHref } from "./ui";
 
 const DEMO_USER_ID = "user_demo";
@@ -127,10 +129,13 @@ export function TopBar({ s, onTogglePause, busy }: { s: DashState; onTogglePause
     <div className="flex h-16 items-center justify-between gap-3">
       <Link href="/" className="flex min-w-0 items-center gap-2.5">
         <Logo size={28} />
-        <span className="text-[17px] font-semibold tracking-tight text-fg">Mayflower</span>
+        <GradientText colors={["var(--fg)", "var(--accent)", "var(--fg)"]} animationSpeed={9} className="text-[17px] font-semibold tracking-tight">
+          Mayflower
+        </GradientText>
         <TestnetPill className="hidden min-[380px]:inline-flex" />
       </Link>
       <div className="flex items-center gap-2">
+        <Magnet padding={40} magnetStrength={4}>
         <a
           href={smsHref()}
           className="inline-flex h-9 items-center gap-1.5 rounded-full bg-ink px-3.5 text-sm font-medium text-ink-fg transition-opacity hover:opacity-90"
@@ -139,6 +144,7 @@ export function TopBar({ s, onTogglePause, busy }: { s: DashState; onTogglePause
           <span className="hidden sm:inline">Text Mayflower</span>
           <span className="sm:hidden">Text</span>
         </a>
+        </Magnet>
         <AccountMenu s={s} onTogglePause={onTogglePause} busy={busy} />
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { DashState } from "./state";
+import LogoLoop, { type LogoItem } from "./reactbits/LogoLoop";
 import { Sparkline, signedPct } from "./ui";
 
 type Ticker = { symbol: string; price: number; change24h: number | null; spark: number[] };
@@ -45,35 +46,52 @@ export function TickerStrip({ s }: { s: DashState }) {
 
   const markets = marketTickers(s);
 
+  const coins = tickers ?? ["BTC", "ETH", "SOL"].map((symbol) => ({ symbol, price: NaN, change24h: null, spark: [] }));
+  const items: LogoItem[] = [
+    ...coins.map((t) => ({
+      title: t.symbol,
+      node: (
+        <span className="flex items-center gap-2 text-[13px] leading-none">
+          <span className="font-semibold text-fg">{t.symbol}</span>
+          {Number.isFinite(t.price) ? (
+            <>
+              <span className="num text-fg-2">{price(t.price)}</span>
+              <span className={`num text-xs ${t.change24h == null ? "text-muted" : t.change24h >= 0 ? "text-up" : "text-down"}`}>{signedPct(t.change24h)}</span>
+              <Sparkline points={t.spark} />
+            </>
+          ) : (
+            <span className="h-3 w-16 animate-pulse rounded bg-sunken" />
+          )}
+        </span>
+      ),
+    })),
+    ...markets.map((m) => ({
+      title: m.title,
+      node: (
+        <span className="flex max-w-[280px] items-center gap-2 text-[13px] leading-none">
+          {m.held && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-label="You hold this" />}
+          <span className="truncate text-fg-2">{m.title}</span>
+          <span className="num shrink-0 font-medium text-fg">{Math.round(m.yes * 100)}¢</span>
+          <span className="shrink-0 text-[11px] text-subtle">YES</span>
+        </span>
+      ),
+    })),
+  ];
+
   return (
-    <div className="border-b border-line bg-raised">
-      <div className="fade-x no-scrollbar mx-auto flex max-w-6xl items-center gap-6 overflow-x-auto px-4 py-2.5 sm:px-6">
-        {tickers === null
-          ? ["BTC", "ETH", "SOL"].map((sym) => (
-              <div key={sym} className="flex shrink-0 items-center gap-2 text-[13px]">
-                <span className="font-medium text-fg">{sym}</span>
-                <span className="h-3 w-16 animate-pulse rounded bg-sunken" />
-              </div>
-            ))
-          : tickers.map((t) => (
-              <div key={t.symbol} className="flex shrink-0 items-center gap-2 text-[13px]">
-                <span className="font-semibold text-fg">{t.symbol}</span>
-                <span className="num text-fg-2">{price(t.price)}</span>
-                <span className={`num text-xs ${t.change24h == null ? "text-muted" : t.change24h >= 0 ? "text-up" : "text-down"}`}>
-                  {signedPct(t.change24h)}
-                </span>
-                <Sparkline points={t.spark} />
-              </div>
-            ))}
-        {markets.length > 0 && <span className="h-4 w-px shrink-0 bg-line-strong" aria-hidden />}
-        {markets.map((m) => (
-          <div key={m.id} className="flex max-w-[260px] shrink-0 items-center gap-2 text-[13px]" title={m.title}>
-            {m.held && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-label="You hold this" />}
-            <span className="truncate text-fg-2">{m.title}</span>
-            <span className="num shrink-0 font-medium text-fg">{Math.round(m.yes * 100)}¢</span>
-            <span className="shrink-0 text-[11px] text-subtle">YES</span>
-          </div>
-        ))}
+    <div className="border-b border-line bg-raised/80 backdrop-blur">
+      <div className="h-10 overflow-hidden">
+        <LogoLoop
+          logos={items}
+          speed={36}
+          gap={36}
+          logoHeight={18}
+          pauseOnHover
+          fadeOut
+          fadeOutColor="var(--raised)"
+          ariaLabel="Live prices"
+          className="h-10 [&_ul]:h-10 [&_ul]:items-center"
+        />
       </div>
     </div>
   );

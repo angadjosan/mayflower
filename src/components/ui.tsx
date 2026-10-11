@@ -2,6 +2,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "./icons";
+import { useResolvedTheme } from "./hooks";
+import BlurText from "./reactbits/BlurText";
+import ShinyText from "./reactbits/ShinyText";
 
 // ---------- Formatting ----------
 
@@ -57,8 +60,17 @@ export function SectionHead({ title, count, action, sub }: { title: string; coun
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
-        <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-fg">
-          {title}
+        <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-fg" aria-label={title}>
+          <span aria-hidden>
+            <BlurText
+              text={title}
+              animateBy="letters"
+              delay={35}
+              stepDuration={0.28}
+              animationFrom={{ filter: "blur(8px)", opacity: 0, y: -6 }}
+              animationTo={[{ filter: "blur(3px)", opacity: 0.6, y: 1 }, { filter: "blur(0px)", opacity: 1, y: 0 }]}
+            />
+          </span>
           {count != null && count > 0 && <span className="num rounded-full bg-sunken px-2 py-0.5 text-xs font-medium text-muted">{count}</span>}
         </h2>
         {sub && <p className="mt-0.5 text-[13px] text-muted">{sub}</p>}
@@ -185,10 +197,18 @@ export function SideTag({ side }: { side: "YES" | "NO" }) {
 }
 
 export function TestnetPill({ className = "" }: { className?: string }) {
+  const theme = useResolvedTheme();
   return (
     <span className={`inline-flex items-center gap-1 rounded-full border border-warn/30 bg-warn-soft px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-[0.06em] text-warn ${className}`}>
       <span className="h-1 w-1 rounded-full bg-warn" aria-hidden />
-      Testnet
+      <ShinyText
+        text="Testnet"
+        color={theme === "dark" ? "#f5b454" : "#b45309"}
+        shineColor={theme === "dark" ? "#fff4dc" : "#fcd34d"}
+        speed={3.2}
+        delay={2.5}
+        shineWidth={30}
+      />
     </span>
   );
 }

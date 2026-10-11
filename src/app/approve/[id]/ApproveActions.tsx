@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { Order, ProposalStatus } from "@/lib/types";
+import { useResolvedTheme } from "@/components/hooks";
+import StarBorder from "@/components/reactbits/StarBorder";
 
 function describe(o: Order) {
   const label = o.mode === "simulated" ? "simulated" : "sandbox";
@@ -24,6 +26,7 @@ export default function ApproveActions({
   const [order, setOrder] = useState<Order | null>(initialOrder);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const theme = useResolvedTheme();
 
   async function call(kind: "approve" | "reject") {
     setBusy(true); setError(null);
@@ -72,12 +75,21 @@ export default function ApproveActions({
   return (
     <div className="space-y-2">
       {error && <p className="rounded-xl bg-down-soft p-3 text-sm text-down">{error}</p>}
-      <button
-        disabled={busy} onClick={() => call("approve")}
-        className="h-12 w-full rounded-full bg-ink text-[15px] font-medium text-ink-fg transition-opacity hover:opacity-90 active:scale-[0.99] disabled:opacity-50"
+      <StarBorder
+        as="button"
+        disabled={busy}
+        onClick={() => call("approve")}
+        theme={theme}
+        color={theme === "dark" ? "#22d3ee" : "#0891b2"}
+        radius={999}
+        thickness={1.5}
+        duration={5}
+        backgroundColor="var(--ink)"
+        textColor="var(--ink-fg)"
+        className="flex h-12 w-full items-center justify-center text-[15px] font-medium transition-opacity hover:opacity-95 disabled:opacity-50"
       >
         {busy ? "Placing order…" : "Approve this exact order"}
-      </button>
+      </StarBorder>
       <button
         disabled={busy} onClick={() => call("reject")}
         className="h-11 w-full rounded-full text-sm text-muted transition-colors hover:bg-sunken hover:text-fg disabled:opacity-50"

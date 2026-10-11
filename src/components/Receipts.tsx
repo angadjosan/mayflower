@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AuditReceipt } from "@/lib/types";
 import { Icon } from "./icons";
+import DecryptedText from "./reactbits/DecryptedText";
 import { Button, Chip, InfoTip, Ring, time } from "./ui";
 
 const EXPLORER = "https://testnet.bscscan.com/tx/";
@@ -91,7 +92,7 @@ export default function Receipts() {
               <li key={r.id} className="flex items-center gap-3 px-4 py-3">
                 <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} title={r.status} aria-label={r.status} />
                 <Chip className="h-5 px-1.5 text-[11px]">{r.kind}</Chip>
-                <code className="min-w-0 flex-1 truncate font-mono text-xs text-fg-2" title={r.error ?? r.hash}>{short(r.hash)}</code>
+                <code className="min-w-0 flex-1 truncate font-mono text-xs text-fg-2" title={r.error ?? r.hash}><DecryptedText text={short(r.hash)} animateOn="view" sequential speed={25} characters="0123456789abcdef" encryptedClassName="text-subtle" /></code>
                 <span className="num hidden text-[11px] text-subtle sm:inline">{time(r.createdAt)}</span>
                 {r.txHash && (
                   <a href={`${EXPLORER}${r.txHash}`} target="_blank" rel="noopener noreferrer" aria-label="View on BscScan" title="View on BscScan" className="flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-sunken hover:text-fg">
