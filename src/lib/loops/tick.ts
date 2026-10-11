@@ -2,6 +2,7 @@
 // whichever loops are due (last-run timestamps live in db.loopState), never two copies of the same loop at once.
 import { tx, now } from "../db";
 import { reconcileOrders } from "../execution";
+import { refreshMarks } from "../marks";
 import { runMonitor } from "../monitor";
 import { finalizeDueContests } from "../agent/group";
 import { syncAll } from "../connectors";
@@ -54,6 +55,7 @@ const LOOPS: Record<LoopName, () => Promise<unknown>> = {
 export interface TickResult {
   at: string;
   reconciled: number | { error: string };
+  marks?: { marked: number; snapshots: number } | { error: string };
   ran: Record<string, { ms: number; result?: unknown; error?: string }>;
   skipped: Record<string, string>;
 }
@@ -95,6 +97,11 @@ export async function runTick(opts: { force?: LoopName[]; only?: LoopName[] } = 
     out.reconciled = (await reconcileOrders()).length;
   } catch (e) {
     out.reconciled = { error: (e as Error).message };
+  }
+  try {
+    out.marks = await refreshMarks();
+  } catch (e) {
+    out.marks = { error: (e as Error).message };
   }
 
   const intervals = loopIntervals();
