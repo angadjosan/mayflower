@@ -16,6 +16,8 @@ With no keys set, every integration runs in a **mock or simulated mode, and the 
 |---|---|---|
 | Claude (LLM) | `ANTHROPIC_API_KEY` | heuristic profile parsing and forecasts |
 | Gemini Exchange (sandbox) | `GEMINI_EXCHANGE_API_KEY/SECRET` | public market data if reachable, otherwise mock markets; simulated orders |
+| Polymarket (fallback venue) | `POLYMARKET_PRIVATE_KEY` + `POLYMARKET_LIVE_TRADING=1` | public market data for markets Gemini doesn't list; simulated orders |
+| Hyperliquid HIP-4 (fallback venue) | `HYPERLIQUID_PRIVATE_KEY` (testnet by default) | public outcome data for markets neither Gemini nor Polymarket lists; simulated orders |
 | Context.dev | `CONTEXT_DEV_API_KEY` | `[mock]` citations |
 | BlueBubbles (iMessage) | `BLUEBUBBLES_URL/PASSWORD` | web chat only |
 

@@ -4,7 +4,7 @@ import { sessionUserId, UNAUTHORIZED } from "@/lib/session";
 import { approvalUrl } from "@/lib/execution";
 import { getPortfolioSummary } from "@/lib/risk";
 import { llmEnabled } from "@/lib/llm";
-import { exchangeMode } from "@/lib/exchange";
+import { exchangeMode, polymarketMode, polymarketEnabled, hyperliquidMode, hyperliquidEnabled } from "@/lib/exchange";
 import { researchMode } from "@/lib/research";
 import { bbEnabled } from "@/lib/bluebubbles";
 
@@ -52,6 +52,6 @@ export async function GET() {
     monitorEvents: mine(db.monitorEvents).slice().reverse(),
     audit: mine(db.audit).slice(-50).reverse(),
     portfolio,
-    modes: { llm: llmEnabled, exchange: exchangeMode, research: researchMode, imessage: bbEnabled },
+    modes: { llm: llmEnabled, exchange: exchangeMode, polymarket: polymarketEnabled ? polymarketMode : "off", hyperliquid: hyperliquidEnabled ? hyperliquidMode : "off", research: researchMode, imessage: bbEnabled },
   });
 }

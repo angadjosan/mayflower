@@ -157,7 +157,7 @@ async function matchProposal(userId: string, text: string): Promise<TradeProposa
 
 async function proposalsText(userId: string, focus?: string): Promise<string> {
   // Research takes a little while; say so right away instead of going quiet.
-  await sendToUser(userId, `On it — scanning Gemini markets${focus ? ` for "${focus}"` : ""} and researching the best fits. Give me about 30 seconds.`).catch(() => {});
+  await sendToUser(userId, `On it — scanning Gemini (plus Polymarket and Hyperliquid for anything Gemini doesn't list)${focus ? ` for "${focus}"` : ""} and researching the best fits. Give me about 30 seconds.`).catch(() => {});
   const props = await discover(userId, focus ? { focus } : undefined);
   if (!props.length) return "I looked, but didn't find a trade with enough edge to beat fees and uncertainty right now. No trade is a valid answer — I'll keep watching.";
   const db = await load();
@@ -169,7 +169,7 @@ async function portfolioText(userId: string, text: string): Promise<string> {
   const db = await load();
   const open = db.positions.filter((p) => p.userId === userId && p.status === "open");
   const lines = [
-    `Portfolio${s.mode === "simulated" ? " (simulated)" : " (sandbox)"}: $${s.atRiskUsd.toFixed(2)} at risk of your $${s.riskBudgetUsd} budget, $${s.availableUsd.toFixed(2)} room left. P&L: ${s.unrealizedPnlUsd >= 0 ? "+" : ""}$${s.unrealizedPnlUsd.toFixed(2)} unrealized, ${s.realizedPnlUsd >= 0 ? "+" : ""}$${s.realizedPnlUsd.toFixed(2)} realized.`,
+    `Portfolio${s.mode === "simulated" ? " (simulated)" : s.mode === "live" ? " (live)" : s.mode === "testnet" ? " (testnet)" : " (sandbox)"}: $${s.atRiskUsd.toFixed(2)} at risk of your $${s.riskBudgetUsd} budget, $${s.availableUsd.toFixed(2)} room left. P&L: ${s.unrealizedPnlUsd >= 0 ? "+" : ""}$${s.unrealizedPnlUsd.toFixed(2)} unrealized, ${s.realizedPnlUsd >= 0 ? "+" : ""}$${s.realizedPnlUsd.toFixed(2)} realized.`,
   ];
   if (!open.length) lines.push("No open positions yet.");
   else {

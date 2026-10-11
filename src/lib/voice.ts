@@ -92,7 +92,7 @@ export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promis
       return {
         ok: true,
         say: [
-          `Portfolio${s.mode === "simulated" ? ", simulated mode" : ", Gemini sandbox"}.`,
+          `Portfolio${s.mode === "simulated" ? ", simulated mode" : s.mode === "live" ? ", live" : s.mode === "testnet" ? ", Hyperliquid testnet" : ", Gemini sandbox"}.`,
           s.exposureExplanation,
           `${dollars(s.availableUsd)} of room left. Profit and loss: ${s.unrealizedPnlUsd >= 0 ? "up" : "down"} ${dollars(Math.abs(s.unrealizedPnlUsd))} unrealized, ${s.realizedPnlUsd >= 0 ? "up" : "down"} ${dollars(Math.abs(s.realizedPnlUsd))} realized.`,
           open.length ? `Open positions: ${pos}${open.length > 5 ? `, and ${open.length - 5} more` : ""}.` : "No open positions.",

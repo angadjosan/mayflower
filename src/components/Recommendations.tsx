@@ -21,6 +21,8 @@ function ProposalCard({ p, onAsk, onReject }: { p: ProposalView; onAsk: (p: Prop
         <Badge tone={d.tone}>{d.label}</Badge>
         {p.kind !== "open" && <Badge tone="warn">{p.kind === "close" ? "Close position" : p.kind === "hedge" ? "Hedge (partial)" : "Reduce position"}</Badge>}
         {p.market.source === "mock" && <Badge>Mock market</Badge>}
+        {p.market.source === "polymarket" && <Badge tone="neutral">Polymarket</Badge>}
+        {p.market.source === "hyperliquid" && <Badge tone="neutral">Hyperliquid</Badge>}
         {p.market.expiresAt && <span className="text-xs text-stone-400">Expires {new Date(p.market.expiresAt).toLocaleDateString()}</span>}
       </div>
       <h3 className="mt-2 text-[15px] font-semibold leading-snug">{title}</h3>

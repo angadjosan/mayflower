@@ -15,6 +15,28 @@
 - Orders on mock markets (or in simulated mode) are simulated. A buy fills at the ask if `limitPrice >= ask`, and otherwise stays `open`. A sandbox order is reported as filled only if the exchange returns `filled` or a nonzero `filledQuantity`.
 - Note: the sandbox right now mostly lists short-dated crypto and commodity contracts.
 
+## Venue routing (`src/lib/exchange.ts`)
+- Gemini is the primary venue. `listMarkets()` merges Gemini, Polymarket and Hyperliquid, in that priority order. A market from a lower-priority venue is included only when no higher-priority venue lists an orderable equivalent. The goal is to place a trade on Polymarket or Hyperliquid only when Gemini doesn't offer it.
+- "Equivalent" is decided by `sameQuestion()`: word overlap of at least 0.65 (Jaccard, stopwords removed), **identical numbers** (strikes, years, dates), any "— outcome" labels must overlap, and expiries no more than 7 days apart. Dedupe only runs across venues, so sibling contracts on one venue are never merged. Paper-only listings (Gemini production markets, Hyperliquid mainnet seen from testnet) give way to an orderable equivalent on any venue.
+- Market ids carry the venue: Gemini instrument symbols, `PM-<conditionId>`, and `HL-<T|M>-<outcome>`. `placeOrder`, `getOrderStatus` and `getBalance` route by venue. `Order.venue` records it, and discovery sizes each pick against the balance of the venue it trades on.
+- Every venue falls back to the same simulated fill when it has no credentials (a buy fills at the ask if limit ≥ ask). Labels everywhere say which venue and mode applies (`venueLabel`, `orderModeFor`).
+
+## Exchange: Polymarket (`src/lib/polymarket.ts`)
+- Env: `POLYMARKET_PRIVATE_KEY`, `POLYMARKET_LIVE_TRADING=1`, and optionally `POLYMARKET_SIGNATURE_TYPE`, `POLYMARKET_FUNDER_ADDRESS` and `POLYMARKET_API_KEY/SECRET/PASSPHRASE`. `POLYMARKET_ENABLED=0` turns the venue off.
+- Mode: `live` only when both the key and the opt-in are set, because Polymarket has no sandbox and orders move real USDC. Otherwise `simulated`. Polymarket's international CLOB geo-blocks some jurisdictions, including the US, so check eligibility before going live.
+- Discovery: `GET gamma-api.polymarket.com/events?active=true&closed=false&order=volume24hr` (public). Only binary Yes/No markets are used. Multi-outcome events map to one contract per named market (`groupItemTitle`). YES quotes come from `bestBid`/`bestAsk`. NO is mirrored (noAsk = 1 − yesBid). Results are cached for 60s. Single markets, including settled ones, come from `/markets?condition_ids=`, and settled markets report `lastPrice` from `outcomePrices`, which calibration uses.
+- Orders follow the official `@polymarket/clob-client` v5.8.1 (source read for this integration). They are EIP-712 `Order` structs on Polygon (137), signed against the CTF Exchange or Neg-Risk CTF Exchange. Amounts are 6-decimal and rounded per tick, the wire format matches `orderToJson`, and the order type is GTC. Tick size comes from `/tick-size` and fee rate from `/fee-rate`. API creds come from L1 `ClobAuth` via `/auth/derive-api-key`, falling back to `/auth/api-key`. Private calls use L2 HMAC-SHA256 headers. Status is read from `GET /data/order/{id}` and balance from `GET /balance-allowance?asset_type=COLLATERAL`.
+- Proposals below a market's `orderMinSize` (usually 5 contracts) are skipped at discovery.
+- **Unverified:** this container could not reach Polymarket's hosts, so no live call has been made.
+
+## Exchange: Hyperliquid HIP-4 outcomes (`src/lib/hyperliquid.ts`)
+- Env: `HYPERLIQUID_NETWORK` (default `testnet`), `HYPERLIQUID_PRIVATE_KEY`, `HYPERLIQUID_ACCOUNT_ADDRESS` (when the key is an API/agent wallet), and `HYPERLIQUID_LIVE_TRADING=1` for mainnet. `HYPERLIQUID_DISCOVERY_INCLUDE_MAINNET=1` lists mainnet outcomes as paper-only while on testnet. `HYPERLIQUID_ENABLED=0` turns the venue off.
+- Mode: `testnet` with a key on testnet, `live` on mainnet with the key and the opt-in, otherwise `simulated`.
+- Encoding (from the `@nktkas/hyperliquid` types and Hyperliquid's asset-id docs): `enc = 10·outcome + side` (YES 0, NO 1). The book coin is `#enc`, the balance coin is `+enc`, and the order asset id is `100000000 + enc`.
+- Discovery: the `outcomeMeta` info request returns outcomes and questions. Named outcomes of a question share an `eventId`, and settled ones are dropped. Each outcome reads two `l2Book` snapshots (YES and NO tokens) for up to `HYPERLIQUID_MAX_OUTCOMES` outcomes (default 40), in batches of 10. Expiry is parsed best-effort from the description (`expiry:YYYYMMDD-HHMM`), because that format isn't formally documented. Settled outcomes come from `settledOutcome` (`settleFraction` → `lastPrice`).
+- Orders go through `@nktkas/hyperliquid` `ExchangeClient.order` (msgpack L1 action + agent EIP-712 signature). They are GTC limit orders, prices use 5 significant figures, and the cloid is derived from the proposal id. Status comes from `orderStatus`. Balance is `spotClearinghouseState`: free total − hold of the outcomes' quote token.
+- **Unverified:** no live call has been made from here. Any exchange minimum notional is enforced server-side, and the rejection is surfaced on the order.
+
 ## Research: Context.dev (`src/lib/research.ts`)
 - Env: `CONTEXT_DEV_API_KEY`, `CONTEXT_DEV_BASE_URL` (default `https://api.context.dev/v1`).
 - Endpoint, taken from context.dev's `openapi.json`: `POST /web/search` with `Authorization: Bearer <key>` and body `{query, numResults}` (numResults minimum is 10). The response is `{results:[{url,title,description,...}]}`, sliced to `limit`.
