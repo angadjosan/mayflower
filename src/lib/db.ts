@@ -1,7 +1,7 @@
 // Datastore. Server-only: never import this from a "use client" module (the Supabase service role key lives here).
 //
 // The whole app state is one JSON document (`DB`). Two backends, chosen by env:
-//  - Supabase Postgres when SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY are set: a single row in `mayflower_state`
+//  - Supabase Postgres when SUPABASE_URL + SUPABASE_SECRET_KEY are set: a single row in `mayflower_state`
 //    (see supabase/migrations/0001_mayflower_state.sql), updated with optimistic concurrency on `version`, so `tx`
 //    is atomic across processes and serverless instances.
 //  - Otherwise a local JSON file (.data/db.json) for dev, guarded by an in-process mutex and written atomically
@@ -76,7 +76,8 @@ export function __setClientForTests(c: StateClient | null | undefined) {
 
 function supabase(): StateClient | null {
   if (clientOverride !== undefined) return clientOverride;
-  const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // Secret key (sb_secret_…) bypasses RLS like the legacy service_role key; server-side only, never NEXT_PUBLIC_.
+  const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
   client ??= createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   return client;
@@ -122,7 +123,7 @@ async function supaTx<T>(sb: StateClient, fn: (db: DB) => T | Promise<T>): Promi
 // ---------------------------------------------------------------- File backend (dev fallback)
 
 // Vercel's filesystem is read-only except /tmp, which is per-instance and wiped on cold start —
-// set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY for real persistence there.
+// set SUPABASE_URL + SUPABASE_SECRET_KEY for real persistence there.
 const FILE = process.env.VERCEL ? "/tmp/mayflower/db.json" : path.join(process.cwd(), ".data", "db.json");
 let fileLock: Promise<void> = Promise.resolve();
 
