@@ -1,8 +1,8 @@
 // Execution: the ONLY path from an approved proposal to the exchange.
 import crypto from "crypto";
 import { tx, load, id, now, audit, type DB } from "./db";
-import type { Order, Position, TradeProposal } from "./types";
-import { placeOrder, getOrderStatus, venueLabel, venueOf } from "./exchange";
+import type { Market, Order, Position, TradeProposal } from "./types";
+import { placeOrder, getOrderStatus, venueLabel, venueOf, getMarket, cancelExchangeOrder, orderModeFor, hyperliquidMode } from "./exchange";
 import { sendToUser } from "./notify";
 import { exitLevels } from "./risk";
 import { onApproved } from "./receipts";
@@ -24,6 +24,7 @@ function tokenOk(expected: string, given?: string): boolean {
 }
 
 const usd = (n: number) => `$${n.toFixed(2)}`;
+const WORKING: Order["status"][] = ["submitted", "open", "partially_filled"];
 
 /** Current at-risk dollars: open positions' cost basis + unfilled buy orders still working. */
 function atRiskUsd(db: DB, userId: string): number {
@@ -122,6 +123,10 @@ function describeOrder(o: Order): string {
     case "open":
     case "submitted":
       return `${what}: submitted, status: ${o.status} — not filled yet (${label}). I'll tell you when it fills.`;
+    case "cancelled":
+      if (o.filledQuantity > 0)
+        return `${what}: cancelled after ${o.filledQuantity}/${o.quantity} filled at ${usd(o.avgFillPrice ?? o.limitPrice)} (${label}). The filled part stands; the rest was cancelled.`;
+      return `${what}: cancelled before anything filled (${label}).`;
     default:
       return `${what}: ${o.status}${o.error ? ` — ${o.error}` : ""} (${label}). No position was opened.`;
   }
@@ -161,6 +166,11 @@ export async function approveAndExecute(
     } else {
       const pos = db.positions.find((x) => x.userId === p.userId && x.marketId === p.marketId && x.side === p.side && x.status === "open");
       if (!pos || pos.quantity <= 0) return { error: "No open position to close/reduce." };
+      const selling = db.orders
+        .filter((o) => o.userId === p.userId && o.marketId === p.marketId && o.side === p.side && o.action === "sell" && WORKING.includes(o.status))
+        .reduce((s, o) => s + o.quantity - o.filledQuantity, 0);
+      if (p.quantity > pos.quantity - selling + 1e-9)
+        return { error: `You hold ${pos.quantity} contracts${selling ? ` (${selling} already in a working sell order)` : ""}; can't sell ${p.quantity}. Ask for a fresh exit.` };
     }
     p.status = "approved";
     const firstLink = !user.geminiLinked;
@@ -254,4 +264,124 @@ export async function reconcileOrders(userId?: string): Promise<Order[]> {
     }
   }
   return changed;
+}
+
+// ---------------------------------------------------------------- exits + cancels
+
+const EXIT_TTL_MS = 30 * 60 * 1000; // exit quotes go stale fast
+const isExit = (p: TradeProposal) => p.kind === "close" || p.kind === "reduce";
+const bidFor = (m: Market, side: Position["side"]) =>
+  side === "YES" ? m.yesBid ?? (m.noAsk != null ? 1 - m.noAsk : undefined) : m.noBid ?? (m.yesAsk != null ? 1 - m.yesAsk : undefined);
+
+export type CloseProposalResult =
+  | { ok: true; proposal: TradeProposal; approvalUrl: string; reused: boolean }
+  | { ok: false; error: string };
+
+/**
+ * Create (or reuse) a pending sell proposal for `fraction` of an open position at the current bid for its side.
+ * Never sells anything: the proposal still needs explicit approval (link, or the owner's in-dashboard confirm).
+ */
+export async function proposeClose(userId: string, positionId: string, fraction = 1): Promise<CloseProposalResult> {
+  if (!(fraction > 0 && fraction <= 1)) return { ok: false, error: "fraction must be in (0, 1]" };
+  const pre = (await load()).positions.find((p) => p.id === positionId && p.userId === userId);
+  if (!pre || pre.status !== "open" || pre.quantity <= 0) return { ok: false, error: "No open position with that id." };
+  const market = await getMarket(pre.marketId);
+  const bid = market ? bidFor(market, pre.side) : undefined;
+  if (!market || !(bid != null && bid > 0 && bid < 1))
+    return { ok: false, error: `No ${pre.side} bid on "${pre.market.title}" right now, so there's no price to sell at. Try again later.` };
+  const px = +bid.toFixed(4);
+
+  const res = await tx((db): CloseProposalResult & { replaced?: string[] } => {
+    const pos = db.positions.find((p) => p.id === positionId && p.userId === userId);
+    if (!pos || pos.status !== "open" || pos.quantity <= 0) return { ok: false, error: "No open position with that id." };
+    const selling = db.orders
+      .filter((o) => o.userId === userId && o.marketId === pos.marketId && o.side === pos.side && o.action === "sell" && WORKING.includes(o.status))
+      .reduce((s, o) => s + o.quantity - o.filledQuantity, 0);
+    const avail = pos.quantity - selling;
+    if (avail < 1)
+      return { ok: false, error: `All ${pos.quantity} contracts are already in a working sell order. Cancel that order first to re-price.` };
+    const qty = Math.min(avail, fraction >= 1 ? avail : Math.max(1, Math.round(fraction * pos.quantity)));
+    const kind: TradeProposal["kind"] = qty >= pos.quantity ? "close" : "reduce";
+
+    // One pending exit per position: reuse it when the terms match, otherwise replace it.
+    const pending = db.proposals.filter(
+      (p) => p.userId === userId && p.marketId === pos.marketId && p.side === pos.side && p.status === "pending" && isExit(p) && Date.parse(p.expiresAt) > Date.now(),
+    );
+    const same = pending.find((p) => p.quantity === qty && Math.abs(p.limitPrice - px) < 1e-9);
+    if (same) return { ok: true, proposal: { ...same }, approvalUrl: approvalUrl(same), reused: true };
+    for (const p of pending) { p.status = "rejected"; p.statusReason = "Replaced by a newer exit proposal."; }
+
+    const proceeds = +(qty * px).toFixed(2);
+    const pnl = (px - pos.avgEntryPrice) * qty;
+    const simulated = orderModeFor(market) === "simulated";
+    const origin = db.proposals.find((p) => p.id === pos.proposalId);
+    const proposal: TradeProposal = {
+      id: id("prop_"), userId, marketId: pos.marketId, market, researchId: origin?.researchId ?? "",
+      kind, discovery: "personalized", side: pos.side, quantity: qty, limitPrice: px, costUsd: proceeds,
+      marketProbability: px, estimatedProbability: px, edge: 0,
+      thesis: `${kind === "close" ? "Close" : "Reduce"}: sell ${qty} of ${pos.quantity} ${pos.side} contracts at the current bid.`,
+      sizingExplanation: `${qty} × ${usd(px)} = ~${usd(proceeds)} estimated proceeds (before fees). Bought at ${usd(pos.avgEntryPrice)}, so that's ${pnl >= 0 ? "+" : "-"}${usd(Math.abs(pnl))} realized on these contracts.`,
+      riskNotes: [
+        "Limit order at the current bid. Thin markets may fill partially or not at all, and the bid can move before you confirm; an unfilled order can be cancelled.",
+        simulated ? "Simulated order (not a real exchange fill)." : "",
+      ].filter(Boolean).join(" "),
+      status: "pending", approvalToken: crypto.randomBytes(16).toString("hex"),
+      createdAt: now(), expiresAt: new Date(Date.now() + EXIT_TTL_MS).toISOString(), version: 1,
+    };
+    db.proposals.push(proposal);
+    return { ok: true, proposal: { ...proposal }, approvalUrl: approvalUrl(proposal), reused: false, replaced: pending.map((p) => p.id) };
+  });
+  if (res.ok && !res.reused) {
+    await audit({
+      userId, actor: "user", action: "proposal.close_create", ref: res.proposal.id,
+      detail: { positionId, kind: res.proposal.kind, quantity: res.proposal.quantity, limitPrice: res.proposal.limitPrice, fraction, replaced: res.replaced },
+    });
+  }
+  if (!res.ok) return res;
+  return { ok: true, proposal: res.proposal, approvalUrl: res.approvalUrl, reused: res.reused };
+}
+
+/**
+ * Cancel the owner's working order. Filled contracts (and their position) stay; only the unfilled remainder is cancelled.
+ * Simulated orders are cancelled locally; real ones on the venue, then their final fill state is re-read.
+ */
+export async function cancelOrder(userId: string, orderId: string): Promise<{ ok: boolean; order?: Order; error?: string }> {
+  const o = (await load()).orders.find((x) => x.id === orderId && x.userId === userId);
+  if (!o) return { ok: false, error: "Order not found." };
+  if (!WORKING.includes(o.status)) return { ok: false, order: o, error: `Order is already ${o.status}.` };
+  const venue = o.venue ?? venueOf({ id: o.marketId, source: "gemini" });
+  const local = o.mode === "simulated" || !o.exchangeOrderId || o.exchangeOrderId.startsWith("sim-") || (venue === "hyperliquid" && hyperliquidMode === "simulated");
+  if (!local && !o.exchangeOrderId) return { ok: false, order: o, error: "Order has no exchange id yet; try again shortly." };
+
+  let final: Awaited<ReturnType<typeof getOrderStatus>>;
+  if (!local) {
+    const r = await cancelExchangeOrder({ exchangeOrderId: o.exchangeOrderId!, venue, marketId: o.marketId, side: o.side, userId });
+    // Whatever happened, read the order's real state (it may have filled before the cancel landed).
+    final = await getOrderStatus(o.exchangeOrderId!, venue, userId).catch(() => undefined);
+    if (!r.ok && !(final && !WORKING.includes(final.status))) {
+      await audit({ userId, actor: "user", action: "order.cancel_failed", ref: o.id, detail: { venue, mode: o.mode, error: r.error } });
+      return { ok: false, order: o, error: r.error ?? "Cancel failed." };
+    }
+  }
+
+  const updated = await tx((db) => {
+    const cur = db.orders.find((x) => x.id === orderId) as TrackedOrder | undefined;
+    if (!cur) return undefined;
+    if (final) {
+      cur.filledQuantity = Math.max(cur.filledQuantity, final.filledQuantity);
+      if (final.avgFillPrice !== undefined) cur.avgFillPrice = final.avgFillPrice;
+    }
+    const delta = cur.filledQuantity - (cur.appliedQuantity ?? 0);
+    if (delta > 0) applyFill(db, cur, delta, cur.avgFillPrice ?? cur.limitPrice);
+    cur.status = cur.filledQuantity >= cur.quantity ? "filled" : "cancelled";
+    cur.updatedAt = now();
+    return { ...cur };
+  });
+  if (!updated) return { ok: false, error: "Order not found." };
+  await audit({
+    userId, actor: "user", action: "order.cancel", ref: orderId,
+    detail: { venue, mode: o.mode, local, status: updated.status, filled: updated.filledQuantity, quantity: updated.quantity },
+  });
+  if (updated.status === "filled") return { ok: false, order: updated, error: "Too late: the order filled before it could be cancelled." };
+  return { ok: true, order: updated };
 }

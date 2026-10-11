@@ -11,7 +11,7 @@ import {
 } from "./polymarket";
 import {
   listHyperliquidMarkets, getHyperliquidMarket, placeHyperliquidOrder, getHyperliquidOrderStatus,
-  getHyperliquidBalance, isHyperliquidId, hyperliquidMode, hyperliquidEnabled,
+  getHyperliquidBalance, isHyperliquidId, hyperliquidMode, hyperliquidEnabled, cancelHyperliquidOrder,
 } from "./hyperliquid";
 
 export { polymarketMode, polymarketEnabled, hyperliquidMode, hyperliquidEnabled };
@@ -48,6 +48,9 @@ export function venueLabel(mode: OrderMode, venue: Venue = "gemini"): string {
 // Public, no auth. GET /v1/prediction-markets/events?status=active&limit=N
 const EVENTS_PATH = "/v1/prediction-markets/events";
 const ORDER_PATH = "/v1/prediction-markets/order";
+// Body {orderId: int64}; 200 {result:"ok"}, 404 not found, 422 can't cancel (e.g. already filled).
+// From the Prediction Markets OpenAPI spec (developer.gemini.com/specs/openapi/prediction-markets.yaml).
+const ORDER_CANCEL_PATH = "/v1/prediction-markets/order/cancel";
 const ACTIVE_ORDERS_PATH = "/v1/prediction-markets/orders/active"; // body {symbol?, limit<=100, offset}
 const ORDER_HISTORY_PATH = "/v1/prediction-markets/orders/history"; // body {status?, symbol?, limit<=1000, offset}
 // Orders fail with TERMS_NOT_ACCEPTED until this is called once per account.
@@ -74,7 +77,9 @@ async function privatePost<T>(path: string, body: Record<string, unknown> = {}, 
   // OAuth (the user's own account): Bearer token + payload, no nonce/signature.
   // Shared API key (Plan B): HMAC-signed payload; master keys must name a sub-account.
   const payload = bearer ? { request: path, ...body } : { request: path, nonce: nextNonce(), account: ACCOUNT, ...body };
-  const b64 = Buffer.from(JSON.stringify(payload)).toString("base64");
+  // Order ids are int64 (beyond JS number precision): we carry them as strings and emit them as bare JSON integers.
+  const json = JSON.stringify(payload).replace(/"orderId":"(\d+)"/g, '"orderId":$1');
+  const b64 = Buffer.from(json).toString("base64");
   const auth: Record<string, string> = bearer
     ? { Authorization: `Bearer ${bearer}` }
     : { "X-GEMINI-APIKEY": API_KEY!, "X-GEMINI-SIGNATURE": crypto.createHmac("sha384", API_SECRET!).update(b64).digest("hex") };
@@ -393,6 +398,27 @@ export async function getOrderStatus(
     }
   }
   return undefined;
+}
+
+/**
+ * Cancel a working order on its venue. Simulated orders never reach this (execution cancels them locally).
+ * Gemini: the user's OAuth token when linked (same as placeOrder), else the shared sandbox key.
+ */
+export async function cancelExchangeOrder(o: {
+  exchangeOrderId: string; venue: Venue; marketId: string; side: Side; userId?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (o.exchangeOrderId.startsWith("sim-")) return { ok: true };
+  if (o.venue === "hyperliquid") return cancelHyperliquidOrder(o.marketId, o.side, o.exchangeOrderId);
+  if (o.venue === "polymarket") return { ok: false, error: "Cancelling Polymarket orders isn't supported yet." };
+  const token = await userToken(o.userId);
+  if (!token && !(API_KEY && API_SECRET)) return { ok: false, error: "No Gemini account linked" };
+  if (!/^\d+$/.test(o.exchangeOrderId)) return { ok: false, error: `Unexpected Gemini order id ${o.exchangeOrderId}` };
+  try {
+    await privatePost(ORDER_CANCEL_PATH, { orderId: o.exchangeOrderId }, token);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
 
 export async function getBalance(venue: Venue = "gemini", userId?: string): Promise<{ availableUsd: number; mode: OrderMode }> {

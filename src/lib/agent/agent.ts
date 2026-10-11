@@ -5,7 +5,7 @@ import crypto from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { tx, load, id, now, audit } from "../db";
 import { listMarkets, getMarket, venueLabel, venueOf, orderModeFor } from "../exchange";
-import { approvalUrl } from "../execution";
+import { approvalUrl, proposeClose, cancelOrder } from "../execution";
 import { getPortfolioSummary } from "../risk";
 import { sendToUser } from "../notify";
 import { createLoginLink } from "../auth";
@@ -34,6 +34,8 @@ How you work:
 - Act, don't stall. If the user asks for a trade, use your tools: search_markets to find the real contract, research_market to check evidence, then propose_trade. Ask a clarifying question only when you truly can't pick a market.
 - If you need profile info (interests, budget, limits), ask naturally in conversation and save it with update_profile as soon as the user gives it. Never re-send an onboarding script.
 - You cannot place orders. propose_trade creates a pending order; the user confirms it with the approval link. Always include the approval link exactly as returned. Never say a trade was placed or filled.
+- Exits: if they want out ("sell my Fed position", "close half"), call get_portfolio for the position id, then close_position. It returns an approval link; include it verbatim and never say it's sold until they approve and it fills.
+- "cancel that order": cancel_order cancels a working order right away (no approval needed). Filled contracts stay filled.
 - The risk engine enforces the user's limits. If a requested amount exceeds them, say what the limit is and offer to raise it. Only raise limits with update_profile when the user explicitly asks.
 - Be honest about uncertainty, edge, and whether the market looks fairly priced. No promises of profit. "No trade" is a valid answer.
 - Label simulated/paper orders honestly when the tool says the venue is simulated.
@@ -102,8 +104,25 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "get_portfolio",
-    description: "User's balance/limits, P&L, open positions and pending proposals (with approval links).",
+    description: "User's balance/limits, P&L, open positions (with ids), working orders (with ids) and pending proposals (with approval links).",
     input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "close_position",
+    description: "Propose selling all (fraction 1) or part of an open position at the current bid. Creates a pending sell proposal and returns its approval link; does NOT sell. Get positionId from get_portfolio.",
+    input_schema: {
+      type: "object",
+      properties: {
+        positionId: { type: "string" },
+        fraction: { type: "number", description: "Share of the position to sell, 0..1 (0.5 = half). Default 1 (close)." },
+      },
+      required: ["positionId"],
+    },
+  },
+  {
+    name: "cancel_order",
+    description: "Cancel one of the user's working (unfilled or partially filled) orders right away. Already-filled contracts stay. Get orderId from get_portfolio.",
+    input_schema: { type: "object", properties: { orderId: { type: "string" } }, required: ["orderId"] },
   },
   {
     name: "get_link",
@@ -219,11 +238,39 @@ async function runTool(userId: string, name: string, input: Input): Promise<unkn
         limits: u.limits, paused: u.paused,
         portfolio: { atRiskUsd: summary.atRiskUsd, availableUsd: summary.availableUsd, unrealizedPnlUsd: summary.unrealizedPnlUsd, realizedPnlUsd: summary.realizedPnlUsd, explanation: summary.exposureExplanation },
         openPositions: db.positions.filter((p) => p.userId === userId && p.status === "open").map((p) => ({
-          market: label(p.market), side: p.side, quantity: p.quantity, entry: p.avgEntryPrice, current: p.currentPrice, costUsd: p.costBasisUsd,
+          id: p.id, market: label(p.market), side: p.side, quantity: p.quantity, entry: p.avgEntryPrice, current: p.currentPrice, costUsd: p.costBasisUsd,
+        })),
+        openOrders: db.orders.filter((o) => o.userId === userId && ["submitted", "open", "partially_filled"].includes(o.status)).map((o) => ({
+          id: o.id, market: label(db.proposals.find((p) => p.id === o.proposalId)?.market ?? db.positions.find((p) => p.marketId === o.marketId)?.market ?? { title: o.marketId, eventTitle: o.marketId } as Market),
+          action: o.action, side: o.side, status: o.status, filled: o.filledQuantity, quantity: o.quantity, limitPrice: o.limitPrice, venue: venueLabel(o.mode, o.venue),
         })),
         pendingProposals: db.proposals.filter((p) => p.userId === userId && p.status === "pending").map((p) => ({
-          id: p.id, market: label(p.market), side: p.side, costUsd: p.costUsd, approvalUrl: approvalUrl(p),
+          id: p.id, kind: p.kind, market: label(p.market), side: p.side, quantity: p.quantity, price: p.limitPrice,
+          ...(p.kind === "close" || p.kind === "reduce" ? { estProceedsUsd: p.costUsd } : { costUsd: p.costUsd }), approvalUrl: approvalUrl(p),
         })),
+      };
+    }
+
+    case "close_position": {
+      const fraction = input.fraction == null ? 1 : Number(input.fraction);
+      const r = await proposeClose(userId, String(input.positionId), fraction);
+      if (!r.ok) return { error: r.error };
+      const p = r.proposal;
+      await audit({ userId, actor: "agent", action: "agent.close_position", ref: p.id, detail: { positionId: input.positionId, fraction, reused: r.reused } });
+      return {
+        ok: true, approvalUrl: r.approvalUrl, kind: p.kind, market: label(p.market), side: p.side, quantity: p.quantity,
+        bid: p.limitPrice, estProceedsUsd: p.costUsd, note: p.sizingExplanation, risk: p.riskNotes, alreadyPending: r.reused,
+        venue: venueLabel(orderModeFor(p.market), venueOf(p.market)),
+        reminder: "Not sold yet. Send the approval link verbatim; it sells only after they approve, and may not fill in thin markets.",
+      };
+    }
+
+    case "cancel_order": {
+      const r = await cancelOrder(userId, String(input.orderId));
+      const o = r.order;
+      return {
+        ok: r.ok, error: r.error,
+        order: o && { id: o.id, status: o.status, filled: o.filledQuantity, quantity: o.quantity, action: o.action, side: o.side, limitPrice: o.limitPrice },
       };
     }
 

@@ -290,6 +290,19 @@ export async function getHyperliquidOrderStatus(oid: string): Promise<{ status: 
   }
 }
 
+/** Cancel a resting order (asset id derived from the market id + side). */
+export async function cancelHyperliquidOrder(marketId: string, side: Side, oid: string): Promise<{ ok: boolean; error?: string }> {
+  const p = parseId(marketId);
+  if (!exchange || !p || p.net !== NETWORK) return { ok: false, error: "Hyperliquid market is not on the configured network" };
+  if (!/^\d+$/.test(oid)) return { ok: false, error: `Unexpected Hyperliquid order id ${oid}` };
+  try {
+    await exchange.cancel({ cancels: [{ a: ASSET_OFFSET + 10 * p.outcome + (side === "YES" ? 0 : 1), o: Number(oid) }] });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
 /** Free quote-token balance (total - hold) across the stablecoins outcomes settle in. */
 export async function getHyperliquidBalance(): Promise<{ availableUsd: number; mode: "testnet" | "live" | "simulated" }> {
   const u = user();
