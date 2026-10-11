@@ -13,9 +13,7 @@ describe("outboundCallPayload", () => {
     const { outboundCallPayload } = await import("./calls");
     const plain = outboundCallPayload("user_1", "+14155550100", { proposal_id: "" });
     expect(plain.conversation_initiation_client_data).not.toHaveProperty("conversation_config_override");
-    // Every tool-referenced variable is always present (ElevenLabs rejects calls missing one); unused ones are "none".
-    expect(Object.keys(plain.conversation_initiation_client_data.dynamic_variables).sort()).toEqual(["call_opener", "call_reason", "call_token", "proposal_id", "result_summary"]);
-    expect(plain.conversation_initiation_client_data.dynamic_variables).toMatchObject({ call_reason: "none", call_opener: "none", result_summary: "none" });
+    expect(Object.keys(plain.conversation_initiation_client_data.dynamic_variables).sort()).toEqual(["call_token", "proposal_id"]);
     const s = outboundCallPayload("user_1", "+14155550100", { call_reason: "settlement_loss", call_opener: "BRO.", result_summary: "x" }, "BRO.");
     expect(s.conversation_initiation_client_data).toMatchObject({
       dynamic_variables: { call_reason: "settlement_loss", call_opener: "BRO." },

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { load } from "@/lib/db";
 import { callContext, userIdFromCallToken } from "@/lib/calls";
-import { CALL_VAR_DEFAULTS } from "@/lib/calls";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,8 +20,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ token: s
   const url = new URL("https://elevenlabs.io/app/talk-to");
   url.searchParams.set("agent_id", agentId);
   url.searchParams.set("var_call_token", token);
-  for (const [k, v] of Object.entries(CALL_VAR_DEFAULTS)) url.searchParams.set(`var_${k}`, v);
-  url.searchParams.set("var_proposal_id", proposalId || "none");
+  url.searchParams.set("var_proposal_id", proposalId);
   url.searchParams.set("var_greeting", (await callContext(userId, proposalId || undefined)).greeting);
   return NextResponse.redirect(url.toString(), 302);
 }

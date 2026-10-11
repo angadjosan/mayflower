@@ -102,7 +102,7 @@ export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promis
       const texts = await recentChat(userId);
       const settled = settlementBriefing(body);
       if (settled) return { ok: true, ...settled, recentTexts: texts || "no texts yet" };
-      const c = await callContext(userId, body.proposal_id && body.proposal_id !== "none" ? body.proposal_id : undefined);
+      const c = await callContext(userId, body.proposal_id || undefined);
       return { ok: true, say: c.greeting, context: c.opener, recentTexts: texts || "no texts yet" };
     }
     case "portfolio": {
