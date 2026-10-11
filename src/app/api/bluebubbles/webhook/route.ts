@@ -8,6 +8,8 @@ import { bbEnabled } from "@/lib/bluebubbles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// The agent may research several markets before replying (runs in after()).
+export const maxDuration = 300;
 
 interface BBPayload {
   type?: string;

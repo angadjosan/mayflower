@@ -7,6 +7,7 @@ import { updateProfileFromMessage } from "./profile";
 import { discover, formatProposal } from "./discover";
 import { createLoginLink } from "../auth";
 import { proposeHedge } from "../hedge";
+import { runAgent } from "./agent";
 import { sendToUser } from "../notify";
 import type { TradeProposal, UserThesis } from "../types";
 
@@ -232,6 +233,15 @@ export async function handleMessage(userId: string, text: string, channel: "imes
   if (!user) return "Sorry, I couldn't find your account.";
   const priorUserMsgs = db.messages.filter((m) => m.userId === userId && m.role === "user").length;
   await audit({ userId, actor: "user", action: "chat.message", detail: { channel, text } });
+
+  // The agent (Claude + tools) handles every message; the rule-based router below is only a fallback.
+  if (llmEnabled) {
+    try {
+      return await runAgent(userId, text);
+    } catch (e) {
+      console.error("[agent] falling back to rules:", e);
+    }
+  }
 
   const meta = metaIntent(text);
   if (meta) {
