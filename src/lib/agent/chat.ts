@@ -12,21 +12,22 @@ import type { TradeProposal, UserThesis } from "../types";
 
 type Intent = "profile" | "discover" | "question" | "approve" | "reject" | "portfolio" | "pause" | "resume" | "smalltalk";
 
-const SYSTEM = `You are Mayflower, texting someone over iMessage. You're the friend who actually trades prediction markets: quick, warm, a little cheeky, and brutally honest. You'd rather say "nah, that's a bad bet" than hype anything.
+const SYSTEM = `You are Mayflower, texting someone over iMessage. You're a real person who happens to trade prediction markets a lot: relaxed, warm, a bit dry, and honest to a fault. You'd rather say "nah that's a bad bet" than hype anything.
 How you text:
-- Short lines. One thought per line, and every line is sent as its own text bubble, so 2 to 5 lines total.
-- Each line gets one fitting emoji (at the start or the end). Don't stack emojis.
-- Casual and human: contractions, plain words, no corporate tone, no markdown, no bullet symbols.
-- Never use em dashes or en dashes. Use commas, periods, or a new line instead.
+- all lowercase, always. no capital letters anywhere.
+- short lines, each sent as its own text. usually 2 to 4 lines. fragments are fine.
+- no emojis. at most one in a whole conversation turn, and only if a friend would actually send it.
+- sound like a person, not an assistant: contractions, plain words, the odd "ngl" or "tbh" but not every time. never "great question", never "i'd be happy to help", no exclamation marks, no lists, no markdown.
+- never use em dashes or en dashes. use commas, periods, or a new line.
 Never promise profit or certainty; be honest about uncertainty and that any trade can lose its full cost. You never place trades from chat. Every trade needs the user to confirm the exact order on the approval page.
 Ground answers ONLY in the JSON context provided; if something isn't there, say you don't know.`;
 
-const ONBOARDING = `hey, I'm Mayflower 👋
-I tell you if your hot takes are actually worth betting on 🔥
-what do you follow? teams, crypto, AI, the economy, anything 🏈
-how much are you cool risking in total? like $200 💸
-and max per trade? like $20 🎯
-I never trade without your OK ✋`;
+const ONBOARDING = `hey, i'm mayflower
+basically i tell you if your takes are actually worth betting on
+what kind of stuff do you follow? sports, crypto, ai, the economy, whatever
+how much are you ok risking in total? like $200
+and the most you'd put on one bet? like $20
+and i never place anything without your ok`;
 
 function heuristicIntent(t: string): Intent {
   const s = t.toLowerCase();
@@ -159,13 +160,13 @@ async function matchProposal(userId: string, text: string): Promise<TradeProposa
   return kw ?? pend[0];
 }
 
+const NO_TRADE = "looked around and honestly nothing's worth it right now\nthe edge doesn't beat the fees and the uncertainty\nno trade is a real answer. i'll keep watching";
+
 async function proposalsText(userId: string, focus?: string): Promise<string> {
   // Research takes a little while; say so right away instead of going quiet.
-  await sendToUser(userId, `on it 🔎
-scanning Gemini (plus Polymarket and Hyperliquid for anything Gemini doesn't list)${focus ? ` for "${focus}"` : ""} 📚
-give me ~30 sec ⏳`).catch(() => {});
+  await sendToUser(userId, `on it, give me like 30 sec\nchecking gemini${focus ? ` for "${focus}"` : ""}, plus polymarket and hyperliquid for anything gemini doesn't list`).catch(() => {});
   const props = await discover(userId, focus ? { focus } : undefined);
-  if (!props.length) return "looked everywhere 👀\nnothing with enough edge to beat the fees and the uncertainty 🤷\nno trade is a real answer, I'll keep watching 🫡";
+  if (!props.length) return NO_TRADE;
   const db = await load();
   return props.map((p) => formatProposal(p, db.research.find((r) => r.id === p.researchId))).join("\n\n");
 }
@@ -251,17 +252,17 @@ export async function handleMessage(userId: string, text: string, channel: "imes
       if (!wasOnboarded && after.onboarded) {
         const L = after.limits;
         const ideas = await proposalsText(userId);
-        return `locked in 🔒\nup to $${L.budgetUsd} total, $${L.maxPerTradeUsd} max per trade, ${L.riskStyle} style 🎚️\nhere's what I found 👇\n${ideas}`;
+        return `got it\nup to $${L.budgetUsd} total, $${L.maxPerTradeUsd} max a trade, ${L.riskStyle}\nok here's what i found\n${ideas}`;
       }
       if (!after.onboarded) {
         const hasInterest = (await load()).theses.some((t) => t.userId === userId);
-        const missing = hasInterest ? "how much total you're willing to risk (e.g. $200)" : "a few topics you follow or have opinions on";
-        return `${res.changed ? res.summary + " ✅\n" : ""}next up, tell me ${missing} 👀`;
+        const missing = hasInterest ? "how much you're ok risking in total, like $200" : "what kind of stuff you follow or have opinions on";
+        return `${res.changed ? res.summary + "\n" : ""}ok and tell me ${missing}`;
       }
-      return res.changed ? `${res.summary} ✅\nI'll use that for future ideas 🧠` : "noted 📝\nanything you want to change about your interests or limits? 🎛️";
+      return res.changed ? `${res.summary}\ni'll keep that in mind` : "noted\nanything you want to change about your interests or limits?";
     }
     case "discover": {
-      if (user.paused) return "trading's paused ⏸️\nso no new trades from me\nsay \"resume\" to turn it back on ▶️";
+      if (user.paused) return "trading's paused right now\nso no new trades from me\nsay \"resume\" whenever";
       const m = text.match(/\b(?:outside(?: of)?|other than|besides|except)\s+(.+)/i);
       const inside = text.match(/\b(?:about|in|on|for|related to)\s+(.+)/i);
       const focus = m ? `outside ${m[1]}` : inside ? inside[1] : undefined;
@@ -271,34 +272,34 @@ export async function handleMessage(userId: string, text: string, channel: "imes
       return answerQuestion(userId, text);
     case "approve": {
       const p = await matchProposal(userId, text);
-      if (!p) return "nothing pending to approve 🤔\nsay \"find opportunities\" and I'll go hunting 🔎";
+      if (!p) return "there's nothing pending to approve\nsay \"find opportunities\" and i'll go look";
       await audit({ userId, actor: "agent", action: "chat.approval_link", ref: p.id });
-      return `can't place trades from a text, gotta confirm the exact order ✋\n${p.kind === "open" ? "buy" : "sell"} ${p.quantity} ${p.side} on "${p.market.title || p.market.eventTitle}" at up to $${p.limitPrice.toFixed(2)} each (max $${p.costUsd.toFixed(2)}) 🧾\nconfirm here 👇\n${approvalUrl(p)}${user.paused ? "\nheads up, trading's paused, resume first ⏸️" : ""}`;
+      return `i can't place trades from a text, you gotta confirm the exact order\n${p.kind === "open" ? "buy" : "sell"} ${p.quantity} ${p.side} on "${p.market.title || p.market.eventTitle}" at up to $${p.limitPrice.toFixed(2)} each, $${p.costUsd.toFixed(2)} max\nconfirm here\n${approvalUrl(p)}${user.paused ? "\nheads up, trading's paused, resume first" : ""}`;
     }
     case "reject": {
       const p = await matchProposal(userId, text);
-      if (!p) return "nothing pending to skip 👍";
+      if (!p) return "nothing pending to skip";
       await tx((d) => { const x = d.proposals.find((y) => y.id === p.id); if (x && x.status === "pending") x.status = "rejected"; });
       await audit({ userId, actor: "user", action: "proposal.reject", ref: p.id, detail: { channel } });
-      return `skipped "${p.market.title || p.market.eventTitle}" 👋\nwant me to look for something else? 🔎`;
+      return `ok skipped "${p.market.title || p.market.eventTitle}"\nwant me to look for something else?`;
     }
     case "portfolio":
       return await portfolioText(userId, text);
     case "pause":
       await tx((d) => { const u = d.users.find((x) => x.id === userId); if (u) u.paused = true; });
       await audit({ userId, actor: "user", action: "user.pause", detail: { channel } });
-      return "paused ⏸️\nno orders until you say \"resume\"\nI'll still keep an eye on your positions 👀";
+      return "paused\nno orders until you say \"resume\"\ni'll still keep an eye on your positions";
     case "resume":
       await tx((d) => { const u = d.users.find((x) => x.id === userId); if (u) u.paused = false; });
       await audit({ userId, actor: "user", action: "user.resume", detail: { channel } });
-      return "back on ▶️\nI'll still ask before every single order ✋";
+      return "back on\ni'll still ask before every single order";
     default: {
       if (!user.onboarded) return ONBOARDING;
       try {
         if (!llmEnabled) throw new Error("LLM_DISABLED");
         return (await generateText(`User: "${text}"\nReply briefly. You can help with: finding opportunities, explaining ideas, portfolio updates, updating interests/limits, pause/resume.`, SYSTEM)).trim();
       } catch {
-        return "I can find trades, explain my picks, recap your portfolio, or change your limits 🧭\nwhat are we doing? 😄";
+        return "i can find trades, explain my picks, recap your portfolio, or change your limits\nwhat are we doing";
       }
     }
   }

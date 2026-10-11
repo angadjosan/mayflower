@@ -128,7 +128,7 @@ export async function updateProfileFromMessage(userId: string, text: string): Pr
       user.onboarded = true;
       changes.push("onboarding complete");
     }
-    return { changed: changes.length > 0, summary: changes.length ? `Updated: ${changes.join(", ")}.` : "No profile changes.", newlyOnboarded: !wasOnboarded && user.onboarded };
+    return { changed: changes.length > 0, summary: changes.length ? humanSummary(changes) : "nothing to change", newlyOnboarded: !wasOnboarded && user.onboarded };
   });
 
   if (result.changed) await audit({ userId, actor: "agent", action: "profile.update", detail: { text, extracted: ex, summary: result.summary } });
@@ -139,4 +139,21 @@ export async function updateProfileFromMessage(userId: string, text: string): Pr
 function hasBudgetMention(db: DB, userId: string, budget?: number): boolean {
   if (budget) return true;
   return db.audit.some((a) => a.userId === userId && a.action === "profile.update" && /budget \$/.test(String((a.detail as { summary?: string })?.summary ?? "")));
+}
+
+/** Say what changed the way a friend would ("nice, you're into nfl and the chiefs"), not as a changelog. */
+function humanSummary(changes: string[]): string {
+  const pick = (prefix: string) => changes.filter((c) => c.startsWith(prefix)).map((c) => c.slice(prefix.length));
+  const list = (xs: string[]) => (xs.length <= 2 ? xs.join(" and ") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+  const parts: string[] = [];
+  const interests = pick("interest "), beliefs = pick("belief on "), skips = pick("excluding "), dropped = pick("removed interest ");
+  if (interests.length) parts.push(`nice, you're into ${list(interests)}`);
+  if (beliefs.length) parts.push(`noted your take on ${list(beliefs)}`);
+  if (skips.length) parts.push(`i'll stay away from ${list(skips)}`);
+  if (dropped.length) parts.push(`dropped ${list(dropped)}`);
+  const name = pick("name ")[0];
+  if (name) parts.unshift(`hey ${name}`);
+  const limits = changes.filter((c) => /^(budget |max per trade |max total exposure |\w+ risk style$)/.test(c));
+  if (limits.length) parts.push(`got it, ${list(limits.map((c) => c.replace(/^budget /, "").replace(/^(\$[\d.]+)$/, "$1 total")))}`);
+  return parts.join("\n") || "got it";
 }

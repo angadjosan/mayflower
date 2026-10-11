@@ -11,9 +11,25 @@ export function deDash(text: string): string {
     .replace(/,\s*,/g, ",");
 }
 
+const URL_RE = /(https?:\/\/\S+)/g;
+const EMOJI_RE = /\p{Extended_Pictographic}(?:\u200d\p{Extended_Pictographic}|\ufe0f|\p{Emoji_Modifier})*/gu;
+
+/** Texts like a person: all lowercase (links untouched, they can be case-sensitive) and at most one emoji per reply. */
+export function casual(text: string): string {
+  let seen = false;
+  const noExtraEmoji = text.replace(EMOJI_RE, (e) => (seen ? "" : ((seen = true), e)));
+  return noExtraEmoji
+    .split(URL_RE)
+    .map((part) => (/^https?:\/\//.test(part) ? part : part.toLowerCase()))
+    .join("")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+$/gm, "");
+}
+
 /** Split a reply into separate texts: one per non-empty line, capped so a reply never floods the thread. */
 export function toBubbles(text: string): string[] {
-  const lines = deDash(text)
+  const lines = casual(deDash(text))
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter((l) => l && !/^[\s.,;:!?-]*$/.test(l));
