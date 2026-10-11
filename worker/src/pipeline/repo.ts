@@ -62,7 +62,7 @@ export async function openExposure(db: Db, phone: string, eventTicker: string): 
     `select p.cost_basis, m.event_ticker from positions p left join markets m on m.instrument_symbol = p.instrument_symbol
      where p.user_phone = $1 and p.status = 'open'`, [phone]);
   const [{ reserved }] = await db.query<{ reserved: number }>(
-    `select coalesce(sum(pr.stake), 0)::float as reserved from proposals pr left join orders o on o.proposal_id = pr.id
+    `select coalesce(sum(greatest(pr.stake - coalesce(o.filled_qty * o.avg_price, 0), 0)), 0)::float as reserved from proposals pr left join orders o on o.proposal_id = pr.id
      where pr.user_phone = $1 and (pr.status = 'approved' or (pr.status = 'executed' and o.status in ('submitting','open','partially_filled','unknown')))`, [phone]);
   return {
     total: rows.reduce((s, r) => s + Number(r.cost_basis), 0) + Number(reserved),

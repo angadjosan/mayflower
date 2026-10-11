@@ -145,6 +145,7 @@ async function createProposal(app: App, user: UserProfile, verdictId: string, m:
   for (let attempt = 0; attempt < 5; attempt++) {
     let code = newApprovalCode();
     for (let i = 0; recent.has(code) && i < 50; i++) code = newApprovalCode();
+    if (recent.has(code)) continue;
     try {
       const [{ id }] = await app.db.query<{ id: string }>(
         `insert into proposals (user_phone, verdict_id, instrument_symbol, side, qty, limit_price, stake, max_loss, exit_rules, code, expires_at)

@@ -183,7 +183,10 @@ export class GeminiCatalog implements Catalog {
       const j = (await r.json()) as RawEvent | { data: RawEvent };
       const ev = 'data' in j ? j.data : j;
       const c = ev.contracts?.find((x) => x.instrumentSymbol === e.market.symbol);
-      if (c) e[v] = this.toQuote(e.market.symbol, c);
+      if (c) {
+        e[v] = this.toQuote(e.market.symbol, c);
+        if (c.marketState === 'closed' || c.status === 'closed') e.market.status = 'closed';
+      }
     }));
     e.fetchedAt = Date.now();
   }

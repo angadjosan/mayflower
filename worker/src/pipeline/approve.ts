@@ -24,9 +24,9 @@ export async function approve(app: App, phone: string, code: string): Promise<st
 
   const market = await app.catalog.get(p.instrument_symbol);
   if (!market) return fail(app, p.id, 'market no longer listed');
-  if (market.status === 'closed') return fail(app, p.id, 'the market has closed');
-  // the code is valid for 10 minutes; make sure the approved price is still there before sending
+  // the code is valid for 10 minutes; quote() refetches a stale event, which also refreshes its closed state
   const q = await app.catalog.quote(market.symbol);
+  if (market.status === 'closed') return fail(app, p.id, 'the market has closed');
   const ask = q ? (p.side === 'yes' ? q.yesAsk : q.noAsk) : null;
   if (ask == null) return fail(app, p.id, 'no live price right now');
   if (ask > Number(p.limit_price) + 1e-9) return fail(app, p.id, `the price moved from ${pct(p.limit_price)} to ${pct(ask)}; text me again for a fresh look`);
