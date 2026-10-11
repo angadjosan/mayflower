@@ -36,8 +36,8 @@ function Bars({ title, items, limit }: { title: string; items: Bucket[]; limit: 
                 <span className="truncate text-stone-700">{b.label}</span>
                 <span className={`tabular-nums ${over ? "font-medium text-amber-700" : "text-stone-500"}`}>{usd(b.usd)} · {pct(b.pct)}</span>
               </div>
-              <div className="relative mt-0.5 h-1.5 rounded-full bg-stone-100">
-                <div className={`h-1.5 rounded-full ${over ? "bg-amber-500" : "bg-indigo-500"}`} style={{ width: `${Math.min(100, b.pct * 100)}%` }} />
+              <div className="relative mt-0.5 h-2 rounded-full bg-stone-100">
+                <div className={`h-2 rounded-full transition-[width] duration-700 ${over ? "bg-amber-500" : "bg-money-400"}`} style={{ width: `${Math.min(100, b.pct * 100)}%` }} />
                 <div className="absolute top-[-2px] h-2.5 w-px bg-stone-400" style={{ left: `${limit * 100}%` }} aria-hidden />
               </div>
             </div>
@@ -138,7 +138,7 @@ export default function RiskPanel() {
           ) : (
             <div className="space-y-3">
               {hedges.map((h) => (
-                <div key={h.positionId} className="rounded-xl border border-stone-100 p-3">
+                <div key={h.positionId} className="rounded-2xl bg-stone-50 p-3.5">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium">{h.marketTitle}</div>
@@ -158,7 +158,7 @@ export default function RiskPanel() {
                         const k = `${h.positionId}:${i.marketId}:${i.side}`;
                         const done = created[k];
                         return (
-                          <li key={k} className="rounded-lg bg-stone-50 p-2.5">
+                          <li key={k} className="rounded-xl bg-white p-3 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
                             <div className="flex flex-wrap items-center gap-2">
                               <Badge tone="warn">{i.label}</Badge>
                               <span className="text-sm font-medium">Buy {i.quantity} {i.side} · {i.marketTitle}</span>
@@ -170,7 +170,7 @@ export default function RiskPanel() {
                             <p className="mt-1 text-xs text-stone-500">{i.explanation}</p>
                             <div className="mt-2">
                               {done?.url ? (
-                                <a href={done.url} className="text-sm font-medium text-indigo-600 underline underline-offset-2">Review &amp; approve hedge →</a>
+                                <a href={done.url} className="text-sm font-medium text-imsg underline underline-offset-2">Review &amp; approve hedge →</a>
                               ) : (
                                 <Button variant="outline" disabled={busy === k} onClick={() => void proposeHedge(h.positionId, i)}>
                                   {busy === k ? "Creating…" : "Propose hedge"}

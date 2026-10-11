@@ -97,8 +97,8 @@ export default function Connections() {
                       <a
                         href={configured ? `/api/connect/${p.id}/start` : undefined}
                         aria-disabled={!configured}
-                        className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
-                          configured ? "border-stone-200 bg-white text-stone-700 hover:bg-stone-50" : "pointer-events-none border-stone-200 bg-white text-stone-400 opacity-50"
+                        className={`inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold transition-all ${
+                          configured ? "border-transparent bg-imsg text-white hover:bg-imsg-dark active:scale-95" : "pointer-events-none border-transparent bg-stone-100 text-stone-400 opacity-60"
                         }`}
                       >
                         Connect
@@ -112,12 +112,12 @@ export default function Connections() {
                     <button
                       type="button"
                       onClick={() => setOpen((o) => ({ ...o, [p.id]: !o[p.id] }))}
-                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                      className="text-xs font-medium text-imsg hover:text-imsg"
                     >
                       {open[p.id] ? "▾" : "▸"} What Mayflower learned ({learned})
                     </button>
                     {open[p.id] && (
-                      <div className="mt-2 space-y-2 rounded-xl bg-stone-50 p-3">
+                      <div className="animate-rise mt-2 space-y-2 rounded-2xl bg-stone-50 p-3">
                         {learned === 0 ? (
                           <p className="text-xs text-stone-400">Nothing yet. Try Sync now.</p>
                         ) : (
@@ -139,7 +139,7 @@ export default function Connections() {
                                   <li key={c.id} className="text-xs text-stone-600">
                                     <div className="font-medium text-stone-700">
                                       {c.url ? (
-                                        <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline decoration-indigo-200 underline-offset-2 hover:decoration-indigo-600">
+                                        <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-imsg underline decoration-imsg/30 underline-offset-2 hover:decoration-imsg">
                                           {c.title}
                                         </a>
                                       ) : (

@@ -1,19 +1,69 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafaf9;
-  --foreground: #1c1917;
+  /* iOS "grouped" background so white cards float like Wallet / Cash App */
+  --background: #f2f2f7;
+  --foreground: #111114;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
+}
+
+@theme {
+  /* Money green: the accent for anything that moves dollars */
+  --color-money-50: #e9fbef;
+  --color-money-100: #cbf6da;
+  --color-money-200: #98ecb6;
+  --color-money-300: #5fdf8e;
+  --color-money-400: #2dd36c;
+  --color-money-500: #00c244;
+  --color-money-600: #00a63e;
+  --color-money-700: #008a33;
+  --color-money-800: #076c2b;
+  --color-money-900: #0a5524;
+
+  /* iMessage */
+  --color-imsg: #0a84ff;
+  --color-imsg-dark: #0070e0;
+  --color-bubble: #e9e9eb;
+
+  --animate-pop: pop 260ms cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+  --animate-rise: rise 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-dot: dot 1.2s ease-in-out infinite;
+
+  @keyframes pop {
+    0% { opacity: 0; transform: scale(0.85) translateY(6px); }
+    100% { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  @keyframes rise {
+    0% { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes dot {
+    0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-3px); }
+  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--color-money-400) 35%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

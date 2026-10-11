@@ -42,20 +42,20 @@ export function Profile({
     setSaved(true);
   };
 
-  const input = "w-full rounded-lg border border-stone-200 bg-stone-50 px-3 py-1.5 text-sm outline-none focus:border-indigo-300 focus:bg-white";
+  const input = "w-full rounded-xl bg-stone-100 px-3 py-2 text-sm outline-none ring-money-400 transition focus:bg-white focus:ring-2";
   return (
-    <Card title="Profile & limits">
+    <Card title="You & your limits">
       <div className="mb-4">
-        <div className="mb-1.5 text-xs font-semibold text-stone-500">What Mayflower knows you care about</div>
+        <div className="mb-2 text-xs font-semibold text-stone-500">What Mayflower knows you care about</div>
         {theses.length === 0 ? (
           <p className="text-sm text-stone-400">Nothing yet. Tell Mayflower your interests in chat or iMessage.</p>
         ) : (
-          <ul className="space-y-1.5">
+          <ul className="flex flex-col items-start gap-1">
             {theses.map((t) => (
-              <li key={t.id} className="text-sm">
-                <span className="font-medium">{t.topic}</span>
-                <span className="text-stone-600">: {t.belief}</span>{" "}
-                <span className="text-xs text-stone-400">({Math.round(t.confidence * 100)}% sure, via {t.source})</span>
+              <li key={t.id} className="max-w-full rounded-[18px] rounded-bl-[6px] bg-bubble px-3 py-1.5 text-sm">
+                <span className="font-semibold">{t.topic}</span>
+                <span className="text-stone-700">: {t.belief}</span>{" "}
+                <span className="text-xs text-stone-500">({Math.round(t.confidence * 100)}% sure, via {t.source})</span>
               </li>
             ))}
           </ul>
@@ -82,7 +82,7 @@ export function Profile({
       <p className="mt-2 text-xs text-stone-400">Your budget is a limit, not a deposit. Funds stay in your own Gemini account.</p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Button variant="primary" onClick={save} disabled={busy || !dirty}>Save</Button>
-        {saved && <span className="text-xs text-emerald-600">Saved</span>}
+        {saved && <span className="animate-pop text-xs font-semibold text-money-600">✓ Saved</span>}
         <div className="ml-auto">
           {user.geminiLinked ? (
             <Badge tone="accent">Gemini linked (sandbox, shared account)</Badge>

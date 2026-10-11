@@ -12,6 +12,7 @@ import Connections from "@/components/Connections";
 import Receipts from "@/components/Receipts";
 import RiskPanel from "@/components/RiskPanel";
 import { post, type DashState, type ProposalView } from "@/components/state";
+import { Logo } from "@/components/ui";
 
 export default function Dashboard() {
   const [s, setS] = useState<DashState | null>(null);
@@ -86,9 +87,10 @@ export default function Dashboard() {
   if (!s) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
-        <div className="text-center">
-          <div className="text-lg font-semibold">Mayflower</div>
-          <p className="mt-1 text-sm text-stone-500">{error ? `${error}. Retrying…` : "Loading…"}</p>
+        <div className="flex flex-col items-center text-center">
+          <div className="animate-pulse"><Logo size={56} /></div>
+          <div className="mt-3 text-lg font-bold tracking-tight">Mayflower</div>
+          <p className="mt-1 text-sm text-stone-500">{error ? `${error}. Retrying…` : "Loading your money…"}</p>
         </div>
       </main>
     );
@@ -103,10 +105,10 @@ export default function Dashboard() {
           <Header s={s} busy={busy} onTogglePause={() => run(() => post("/api/settings", { paused: !s.user.paused }))} />
 
           {(error || notice) && (
-            <div className="flex items-start justify-between gap-3 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+            <div className={`animate-pop flex items-start justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-medium shadow-lg ${error ? "bg-amber-50 text-amber-800" : "bg-stone-900 text-white"}`}>
               <span>{error ? `${error}. Showing last known data.` : notice}</span>
               {notice && !error && (
-                <button onClick={() => setNotice(null)} className="text-amber-600 hover:text-amber-900" aria-label="Dismiss">×</button>
+                <button onClick={() => setNotice(null)} className="text-white/60 hover:text-white" aria-label="Dismiss">×</button>
               )}
             </div>
           )}

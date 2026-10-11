@@ -88,7 +88,7 @@ export default function Receipts() {
                     href={`${EXPLORER}${r.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-mono text-xs text-indigo-600 underline decoration-indigo-200 underline-offset-2 hover:decoration-indigo-600"
+                    className="font-mono text-xs text-imsg underline decoration-imsg/30 underline-offset-2 hover:decoration-imsg"
                   >
                     BscScan {short(r.txHash, 8)}
                   </a>
@@ -98,11 +98,11 @@ export default function Receipts() {
                   {v === "checking" ? (
                     "Checking…"
                   ) : v ? (
-                    <span className={v.ok ? "text-emerald-600" : "text-rose-600"}>
+                    <span className={v.ok ? "text-money-600" : "text-rose-600"}>
                       {v.ok ? (v.onchainMatches ? "Verified onchain" : "Hash verified") : v.error ?? "Mismatch"}
                     </span>
                   ) : (
-                    <button onClick={() => verify(r.id)} className="text-indigo-600 hover:underline">Verify</button>
+                    <button onClick={() => verify(r.id)} className="text-imsg hover:underline">Verify</button>
                   )}
                   <span>{time(r.createdAt)}</span>
                 </span>

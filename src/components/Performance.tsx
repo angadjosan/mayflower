@@ -28,8 +28,8 @@ export function Performance({ p }: { p: PortfolioView }) {
                   <span>{t.topic}</span>
                   <span className="tabular-nums text-stone-500">{usd(t.usd, 0)}</span>
                 </div>
-                <div className="mt-1 h-1 rounded-full bg-stone-100">
-                  <div className="h-full rounded-full bg-indigo-400" style={{ width: `${(t.usd / maxTopic) * 100}%` }} />
+                <div className="mt-1 h-2 rounded-full bg-stone-100">
+                  <div className="h-full rounded-full bg-money-400 transition-[width] duration-700" style={{ width: `${(t.usd / maxTopic) * 100}%` }} />
                 </div>
               </li>
             ))}
