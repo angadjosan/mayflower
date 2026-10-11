@@ -1,0 +1,18 @@
+name: Monitor cron
+# Vercel Hobby crons run at most once a day; this calls the same endpoint every 10 minutes.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    env:
+      MAYFLOWER_URL: ${{ secrets.MAYFLOWER_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Run monitor
+        run: |
+          if [ -z "$MAYFLOWER_URL" ] || [ -z "$CRON_SECRET" ]; then echo "MAYFLOWER_URL/CRON_SECRET not set — skipping"; exit 0; fi
+          curl -fsS --max-time 280 -H "Authorization: Bearer $CRON_SECRET" "$MAYFLOWER_URL/api/cron/monitor"
