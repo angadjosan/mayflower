@@ -37,19 +37,39 @@ export async function sendToChat(chatGuid: string, text: string): Promise<boolea
 
 /**
  * Send an audio file to a 1:1 chat. Without the Private API it arrives as a playable audio
- * attachment, not iMessage's native voice-memo bubble. "timeout" means it may have been delivered.
+ * attachment, not iMessage's native voice-memo bubble. A timed-out send is checked against the
+ * chat history, so "ok" means it is really there and "error" means it is safe to fall back to text.
  */
-export async function sendAudio(handle: string, audio: Buffer, filename: string): Promise<SendResult> {
+export async function sendAudio(handle: string, audio: Buffer, filename: string): Promise<"ok" | "error"> {
   if (!bbEnabled) return "error";
-  return toHandle(handle, async (chatGuid) => {
+  const r = await toHandle(handle, async (chatGuid) => {
+    const startedAt = Date.now();
     const form = new FormData();
     form.append("chatGuid", chatGuid);
     form.append("tempGuid", `temp-${crypto.randomUUID()}`);
     form.append("name", filename);
     form.append("method", "apple-script");
     form.append("attachment", new Blob([new Uint8Array(audio)], { type: "audio/mpeg" }), filename);
-    return request("/api/v1/message/attachment", { method: "POST", body: form }, 45_000, chatGuid);
+    const sent = await request("/api/v1/message/attachment", { method: "POST", body: form }, 45_000, chatGuid);
+    if (sent !== "timeout") return sent;
+    return (await sentAttachmentSince(chatGuid, filename, startedAt - 5_000)) ? "ok" : "timeout";
   });
+  return r === "ok" ? "ok" : "error";
+}
+
+/** Did we send an attachment with this name to the chat since `since` (epoch ms)? */
+async function sentAttachmentSince(chatGuid: string, filename: string, since: number): Promise<boolean> {
+  try {
+    const res = await fetch(
+      api(`/api/v1/chat/${encodeURIComponent(chatGuid)}/message?limit=10&sort=DESC&with=attachment&after=${since}`),
+      { signal: AbortSignal.timeout(10_000) },
+    );
+    const body = (await res.json()) as { data?: { isFromMe?: boolean; attachments?: { transferName?: string }[] }[] };
+    return Boolean(body.data?.some((m) => m.isFromMe && m.attachments?.some((a) => a.transferName === filename)));
+  } catch (e) {
+    console.error("[bluebubbles] sent-attachment check failed", redact(e));
+    return false;
+  }
 }
 
 export interface BBAttachment {
@@ -80,8 +100,9 @@ export async function downloadAttachment(
   for (let attempt = 0; attempt < 4; attempt++) {
     if (attempt) await new Promise((r) => setTimeout(r, 1500 * attempt));
     try {
-      const res = await fetch(api(`/api/v1/attachment/${encodeURIComponent(guid)}/download`), { signal: AbortSignal.timeout(30_000) });
-      if (!res.ok) continue;
+      const res = await fetch(api(`/api/v1/attachment/${encodeURIComponent(guid)}/download`), { signal: AbortSignal.timeout(10_000) });
+      // BlueBubbles can answer 200 with a JSON error while the file is still transferring.
+      if (!res.ok || res.headers.get("content-type")?.includes("json")) continue;
       if (Number(res.headers.get("content-length") ?? 0) > maxBytes) return "too_big";
       const data = Buffer.from(await res.arrayBuffer());
       if (data.length > maxBytes) return "too_big";

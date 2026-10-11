@@ -32,6 +32,13 @@ describe("planReply", () => {
   });
 });
 
+describe("several links", () => {
+  it("sends the whole reply as text so each link keeps its label", () => {
+    const reply = `${LONG}\n1. chiefs win, yes at 58c\nreview & approve: https://x.app/a/1\n2. btc above 120k, no at 40c\nreview & approve: https://x.app/a/2`;
+    expect(planReply(reply, { voiceIn: true })).toEqual({ speak: null, text: reply });
+  });
+});
+
 describe("long replies", () => {
   it("speaks whole lines up to the cap and texts the rest in order", () => {
     const lines = Array.from({ length: 30 }, (_, i) => `line number ${i} of a long answer about the market`);

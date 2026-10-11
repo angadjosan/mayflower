@@ -11,8 +11,13 @@ const TTS_MODEL = () => process.env.ELEVENLABS_TTS_MODEL || "eleven_flash_v2_5";
 // Override with ELEVENLABS_VOICE_ID; list yours with GET /v1/voices.
 const VOICE_ID = () => process.env.ELEVENLABS_VOICE_ID || "cgSgspJ2msm6clMCkdW9";
 
+/** An ElevenLabs HTTP error; `status` 401/402/429 means the key, plan or quota, not the audio. */
+export class ElevenLabsError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
 async function fail(what: string, res: Response): Promise<never> {
-  throw new Error(`[elevenlabs] ${what} ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`);
+  throw new ElevenLabsError(`[elevenlabs] ${what} ${res.status}: ${(await res.text().catch(() => "")).slice(0, 300)}`, res.status);
 }
 
 /** Speech to text. Returns the transcript, trimmed ("" if nothing was said). */

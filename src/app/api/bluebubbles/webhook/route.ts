@@ -2,11 +2,10 @@ import crypto from "crypto";
 import { NextResponse, after } from "next/server";
 import { getOrCreateUser } from "@/lib/db";
 import { storeMessage, sendToUser } from "@/lib/notify";
-import { sendToChat } from "@/lib/transport";
 import { handleMessage } from "@/lib/agent/chat";
 import { handleGroupMessage } from "@/lib/agent/group";
 import { bbEnabled, downloadAttachment, isVoiceMemo, type BBAttachment } from "@/lib/bluebubbles";
-import { elevenEnabled, transcribe } from "@/lib/elevenlabs";
+import { ElevenLabsError, elevenEnabled, transcribe } from "@/lib/elevenlabs";
 import { wantsVoice } from "@/lib/voiceNotes";
 
 export const runtime = "nodejs";
@@ -48,14 +47,15 @@ export async function POST(req: Request) {
   // An attachment-only message carries U+FFFC (or nothing) as its text.
   const typed = body.data?.text?.replace(/\uFFFC/g, "").trim() ?? "";
   const address = body.data?.handle?.address;
-  // A voice memo is transcribed and handled like a text. Group voice memos get text replies.
-  const memo = body.data?.attachments?.find(isVoiceMemo);
+  const chatGuid = body.data?.chats?.[0]?.guid;
+  const isGroup = Boolean(chatGuid?.includes(";+;"));
+  // A 1:1 voice memo is transcribed and handled like a text. Group voice memos are between friends,
+  // not addressed to us, so they are never transcribed.
+  const memo = isGroup ? undefined : body.data?.attachments?.find(isVoiceMemo);
   const voiceIn = Boolean(memo?.guid) && (Boolean(body.data?.isAudioMessage) || !typed);
   if (body.type !== "new-message" || body.data?.isFromMe || (!typed && !voiceIn) || !address || !firstTime(body.data?.guid)) {
     return NextResponse.json({ ok: true, ignored: true });
   }
-  const chatGuid = body.data?.chats?.[0]?.guid;
-  const isGroup = Boolean(chatGuid?.includes(";+;"));
   if (isGroup && process.env.ALLOW_GROUP_CHATS !== "1") {
     console.log("[bluebubbles] ignored group message (ALLOW_GROUP_CHATS != 1)");
     return NextResponse.json({ ok: true, ignored: true });
@@ -66,9 +66,7 @@ export async function POST(req: Request) {
     if (voiceIn) {
       const heard = await hear(memo!.guid!);
       if (typeof heard !== "string") {
-        const sorry = MEMO_SORRY[heard.error];
-        if (isGroup) await sendToChat(chatGuid!, sorry);
-        else await sendToUser((await getOrCreateUser({ handle: address })).id, sorry);
+        await sendToUser((await getOrCreateUser({ handle: address })).id, MEMO_SORRY[heard.error]);
         return;
       }
       text = heard;
@@ -102,7 +100,8 @@ const MAX_MEMO_BYTES = 6 * 1024 * 1024;
 const MEMO_SORRY = {
   off: "i can't listen to voice memos yet\nmind typing that one?",
   failed: "couldn't quite catch that voice memo\nmind sending it again or typing it?",
-  too_long: "that one's a bit long for me\nmind keeping it under a minute or two?",
+  too_long: "that one's a bit long for me\nmind sending a shorter one?",
+  down: "my ears are down for a sec\nmind typing that one?",
 } as const;
 
 /** Transcribe a voice memo, or say why we couldn't. */
@@ -115,6 +114,7 @@ async function hear(attachmentGuid: string): Promise<string | { error: keyof typ
     return (await transcribe(file.data, file.filename, file.mime)) || { error: "failed" };
   } catch (e) {
     console.error("[voice memo]", e);
-    return { error: "failed" };
+    // A bad key, unpaid plan or used-up quota won't fix itself on a re-record.
+    return { error: e instanceof ElevenLabsError && [401, 402, 429].includes(e.status) ? "down" : "failed" };
   }
 }

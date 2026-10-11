@@ -66,6 +66,8 @@ export function planReply(reply: string, opts: { voiceIn?: boolean; askedForVoic
   }
   const speak = spoken.join(" ");
   if (speak.length < VOICE_MIN_CHARS) return { speak: null, text: reply };
+  // Several links (e.g. a list of trade ideas) only make sense next to their labels: keep it all as text.
+  if (rest.filter((l) => URL_RE.test(l)).length > 1) return { speak: null, text: reply };
   const text = rest.join("\n");
   if (!text) return { speak, text };
   const pointer = rest.some(mustStayText) ? "the link's in the next text." : "i texted you the rest.";
