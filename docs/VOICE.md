@@ -1,3 +1,38 @@
+# Live calls (ElevenLabs agent)
+
+- **Text "call me"** (or "can we talk"): with a Twilio number imported (`ELEVENLABS_PHONE_NUMBER_ID`) we ring their phone; otherwise we text "tap to talk: <link>", which opens a browser call (`/call/<token>` redirects to ElevenLabs' talk-to page).
+- **A good bet calls you:** when a text produces a new pending trade idea, we ring them (or text the call link) and the agent opens with that idea. No idea = just a text.
+- **Dial in:** the Twilio number is assigned to the agent. Unknown callers get an account keyed to their number.
+- Same rules as text: nothing trades on a call; approvals go by the texted link. Calls end after 5 minutes.
+- Setup: `APP_URL=<public url> npx tsx scripts/voice-agent.mts` creates/updates the agent and its 5 webhook tools (prints `agent_id`). Env: `ELEVENLABS_AGENT_ID`, `ELEVENLABS_TOOL_SECRET`, `ELEVENLABS_PHONE_NUMBER_ID`, `SESSION_SECRET` (signs call links).
+- Free ElevenLabs tier = 15 agent minutes a month (measured account: free tier, 2,469 / 10,000 characters used on 2026-10-11).
+
+# Voice notes in iMessage (ElevenLabs)
+
+People can talk to Mayflower instead of typing: hold the mic button in iMessage and send a voice memo. This is the street-interview path.
+
+- **In:** a voice memo is transcribed with ElevenLabs speech-to-text (`scribe_v2`) and handled exactly like a typed text.
+- **Out:** a reply to a voice memo comes back as a voice note (ElevenLabs text-to-speech, `eleven_multilingual_v2` at speed 1.2) when it is a real conversational answer. Quick acks ("got it", under ~90 spoken characters) stay as texts. Links and `APPROVE` codes are never read out; they follow the voice note as texts, and the voice says "the link's in the next text".
+- Typing "send me a voice memo", "say it out loud" or "read it to me" also gets a spoken answer. A typed conversation stays typed.
+- A spoken reply is capped at ~320 characters (~20 s) of whole lines; anything past that follows as texts ("i texted you the rest"). A reply with more than one link (a list of trade ideas) stays all text so each link keeps its label. Voice memos over 6 MB get "mind sending a shorter one?". Voice memos in group chats are never transcribed (they are between friends, not to us).
+- **Use a paid ElevenLabs key and test it from the deployed server.** The free tier can answer 401 "unusual activity" from cloud IPs like Vercel's. A 401/402/429 tells the user "my ears are down for a sec, mind typing that one?" instead of asking them to re-record.
+- **Fallbacks:** no `ELEVENLABS_API_KEY` means voice memos get "i can't listen to voice memos yet, mind typing that one?" and every reply is text. Any text-to-speech or send failure falls back to the normal texts.
+
+| Piece | File |
+|---|---|
+| When to speak, what to say (pure, tested) | `src/lib/voiceNotes.ts` + `voiceNotes.test.ts` |
+| ElevenLabs STT / TTS calls | `src/lib/elevenlabs.ts` |
+| Download a voice memo, send an audio file | `src/lib/bluebubbles.ts` (`downloadAttachment`, `sendAudio`) |
+| Voice memo detection + transcription | `src/app/api/bluebubbles/webhook/route.ts` |
+| Voice note vs texts at send time | `src/lib/notify.ts` (`sendToUser`) |
+
+Measured on the bridge Mac (BlueBubbles 1.9.9, macOS 26.5.2, 2026-10-11):
+- A voice memo arrives with empty `text`, `isAudioMessage: true`, and an attachment with uti `com.apple.coreaudio-format`. BlueBubbles labels it `audio/mp3`, but the default download is the CAF converted to AAC in an `.m4a` container, which speech-to-text accepts. No ffmpeg needed.
+- Our replies go out as a playable audio attachment (`mayflower.mp3`), not iMessage's native voice-memo bubble. The native bubble needs BlueBubbles' Private API, which is off on that Mac (it needs SIP disabled).
+- Sending an attachment to the `any;-;<handle>` chat delivered in about 1.4 s.
+
+Env: `ELEVENLABS_API_KEY` (required), optional `ELEVENLABS_VOICE_ID`, `ELEVENLABS_TTS_MODEL`, `ELEVENLABS_STT_MODEL`.
+
 # Phone calls with Mayflower (ElevenLabs, P3 stretch)
 
 Users can call Mayflower and talk to the same agent they text. The rules don't change:

@@ -3,20 +3,23 @@
 // voice. Approvals still go through the signed link, which we text to the user's phone on request.
 // No always-on recording and no outbound calls: we only answer calls the user places.
 import crypto from "crypto";
-import { load, audit } from "./db";
+import { load, audit, getOrCreateUser } from "./db";
 import type { TradeProposal, User } from "./types";
 import { getPortfolioSummary } from "./risk";
 import { handleMessage } from "./agent/chat";
 import { discover, formatProposal } from "./agent/discover";
 import { sendToUser } from "./notify";
+import { callContext, userIdFromCallToken } from "./calls";
 
 const APP_URL = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 export const VOICE_SECRET_HEADER = "x-mayflower-voice-secret";
-export const VOICE_TOOLS = ["portfolio", "pending_proposals", "explain", "find_opportunities", "send_approval_link"] as const;
+export const VOICE_TOOLS = ["briefing", "portfolio", "pending_proposals", "explain", "find_opportunities", "send_approval_link"] as const;
 export type VoiceTool = (typeof VOICE_TOOLS)[number];
 
 export interface VoiceToolBody {
   caller?: string; // ElevenLabs {{system__caller_id}} (the caller's phone number)
+  proposal_id?: string; // {{proposal_id}}: the trade idea a call is about, if any
+  call_token?: string; // {{call_token}} from a texted call link (browser calls have no phone number)
   system__caller_id?: string;
   question?: string;
   focus?: string;
@@ -76,7 +79,12 @@ function speakProposal(p: TradeProposal, i?: number): string {
 }
 
 export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promise<VoiceToolResult> {
-  const user = await findUserByCaller(body.caller ?? body.system__caller_id);
+  const linked = userIdFromCallToken(body.call_token);
+  const phone = normalizePhone(body.caller ?? body.system__caller_id);
+  // A stranger dialing in gets an account keyed to their number, the same one iMessage uses if they text later.
+  const user = linked
+    ? (await load()).users.find((u) => u.id === linked)
+    : (await findUserByCaller(phone)) ?? (phone ? await getOrCreateUser({ handle: phone, attachDemo: false }) : undefined);
   if (!user) {
     await audit({ actor: "system", action: "voice.unknown_caller", detail: { tool } });
     return { ok: false, say: UNKNOWN_CALLER };
@@ -85,6 +93,10 @@ export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promis
   await audit({ userId, actor: "user", action: `voice.tool.${tool}`, detail: { focus: body.focus, proposalId: body.proposalId, question: body.question } });
 
   switch (tool) {
+    case "briefing": {
+      const c = await callContext(userId, body.proposal_id || undefined);
+      return { ok: true, say: c.greeting, context: c.opener };
+    }
     case "portfolio": {
       const s = await getPortfolioSummary(userId);
       const open = (await load()).positions.filter((p) => p.userId === userId && p.status === "open");
@@ -145,23 +157,29 @@ export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promis
   }
 }
 
-export const VOICE_SYSTEM_PROMPT = `You are Mayflower, an AI prediction-market copilot, speaking with the user on a phone call they placed.
+export const VOICE_SYSTEM_PROMPT = `You are Mayflower, an AI prediction-market copilot, on a live voice call with the user (they called in, tapped a call link, or you called them about a trade idea).
+Talk like a friend who trades: casual, quick, a sentence or two per turn. Lead with the answer. Let them interrupt.
+First thing on every call: call the briefing tool. Say its "say" line, and use its "context" for what this call is about.
 You are the same agent they text with, with the same rules:
 - You NEVER place, change or cancel trades on a call, even if asked. Every trade needs explicit approval through the signed approval link. If the user wants to approve, call send_approval_link and tell them to approve from their phone.
 - Ground every answer in tool results. Use portfolio for balances/positions, pending_proposals for ideas awaiting approval, explain for any question about an idea, a position, their profile or risk limits, and find_opportunities for new ideas.
-- Always pass the caller's number ({{system__caller_id}}) as "caller" in every tool call.
-- If a tool says it doesn't recognize the number, politely say you can't discuss the account and end the call.
+- Tools identify the user automatically. Never ask for or invent ids.
+- If nobody answers or it is a voicemail greeting, end the call. End the call when the conversation is done.
+- If a tool says it doesn't recognize the caller, politely say you can't discuss the account and end the call.
 - Be brief and conversational. Say numbers naturally ("forty-five cents", "twenty dollars"). Don't read URLs or ids aloud.
 - Be honest about uncertainty and that prediction markets can lose the full amount at risk. No guarantees. This is not financial advice.
 - Don't hold funds, move money or discuss withdrawals: Mayflower is trade-only.`;
 
-export const VOICE_FIRST_MESSAGE = "Hi, it's Mayflower. I can go over your portfolio, pending ideas, or look for new ones. What's up?";
+export const VOICE_FIRST_MESSAGE = "hey, it's mayflower.";
 
 /** ElevenLabs Conversational AI server-tool (webhook) definitions to paste into the agent. */
 export function voiceAgentConfig() {
   const url = (t: VoiceTool) => `${APP_URL}/api/voice/tools/${t}`;
   const callerProp = {
-    caller: { type: "string", description: "The caller's phone number. Always {{system__caller_id}}.", dynamic_variable: "system__caller_id" },
+    // Filled by ElevenLabs from dynamic variables; it rejects a description alongside dynamic_variable.
+    call_token: { type: "string", dynamic_variable: "call_token" },
+    caller: { type: "string", dynamic_variable: "system__caller_id" },
+    proposal_id: { type: "string", dynamic_variable: "proposal_id" },
   };
   const tool = (name: VoiceTool, description: string, extra: Record<string, unknown> = {}, required: string[] = [], timeout = 20) => ({
     type: "webhook",
@@ -176,7 +194,7 @@ export function voiceAgentConfig() {
         type: "object",
         description: `Arguments for ${name}`,
         properties: { ...callerProp, ...extra },
-        required: ["caller", ...required],
+        required: required,
       },
     },
   });
@@ -185,6 +203,7 @@ export function voiceAgentConfig() {
     first_message: VOICE_FIRST_MESSAGE,
     system_prompt: VOICE_SYSTEM_PROMPT,
     tools: [
+      tool("briefing", "Call first on every call: who this is and what the call is about (a trade idea we found, or an open chat). Returns a line to say and context."),
       tool("portfolio", "Get the caller's portfolio summary: amount at risk, room left, P&L, open positions, paused state."),
       tool("pending_proposals", "List the caller's pending trade ideas awaiting approval, each with a proposalId."),
       tool(
@@ -208,8 +227,8 @@ export function voiceAgentConfig() {
       ),
     ],
     notes: [
-      "Replace the header placeholder with your ELEVENLABS_TOOL_SECRET (use an ElevenLabs workspace secret).",
-      "Inbound calls only. No outbound calls and no always-on recording.",
+      "scripts/voice-agent.mts fills the secret header from ELEVENLABS_TOOL_SECRET.",
+      "Calls: the user dials the Twilio number, we ring them about a good trade idea (ELEVENLABS_PHONE_NUMBER_ID), or they tap a texted /call link. No always-on recording.",
     ],
   };
 }

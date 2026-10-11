@@ -194,14 +194,14 @@ export const DEFAULT_LIMITS = {
 export const DEMO_USER_ID = "user_demo";
 export const DEFAULT_TIMEZONE = "America/Los_Angeles";
 
-export async function getOrCreateUser(opts: { id?: string; handle?: string } = {}): Promise<User> {
+export async function getOrCreateUser(opts: { id?: string; handle?: string; attachDemo?: boolean } = {}): Promise<User> {
   const newId = id("user_"), createdAt = now(); // generated outside fn so retries are deterministic
   return tx((db) => {
     let u = opts.handle
       ? db.users.find((x) => x.handle === opts.handle)
       : db.users.find((x) => x.id === (opts.id ?? DEMO_USER_ID));
     // MVP: first iMessage handle attaches to the demo user so web + iMessage share one conversation
-    if (!u && opts.handle) {
+    if (!u && opts.handle && opts.attachDemo !== false) {
       const demo = db.users.find((x) => x.id === DEMO_USER_ID && !x.handle);
       if (demo) { demo.handle = opts.handle; u = demo; }
     }

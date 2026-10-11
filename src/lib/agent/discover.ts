@@ -288,19 +288,13 @@ export function formatProposal(p: TradeProposal, r?: ResearchReport): string {
   const m = p.market;
   const buying = p.kind === "open" || p.kind === "hedge";
   const label = p.kind === "open" ? "Idea" : p.kind === "hedge" ? "Hedge idea (partial, not guaranteed)" : p.kind === "close" ? "Suggest closing" : "Suggest reducing";
-  const tag = p.discovery === "personalized" ? " (matches your interests)" : p.discovery === "general" ? " (broader market)" : "";
   const mode = orderModeFor(m);
   const mock = (m.source === "mock" ? " (mock data)" : "")
     + (venueOf(m) === "gemini" ? (mode === "simulated" ? " (simulated)" : "") : ` (${venueOf(m) === "polymarket" ? "Polymarket" : "Hyperliquid"}, ${mode === "live" ? "real funds" : mode})`);
-  const why = (r?.summary || p.thesis).split(/(?<=\.)\s/).slice(0, 2).join(" ");
+  void r;
   const lines = [
-    `${label}${tag}${mock}: ${m.eventTitle}${m.title && m.title !== m.eventTitle ? ` — ${m.title}` : ""}`,
-    `${buying ? "Buy" : "Sell"} ${p.side} @ $${p.limitPrice.toFixed(2)}: market implies ${pct(p.marketProbability)} for ${p.side}, my estimate ${pct(p.estimatedProbability)}${r ? ` (${r.uncertainty} uncertainty)` : ""}.`,
-    buying
-      ? `Suggested risk: $${p.costUsd.toFixed(2)} (${p.quantity} contracts) — that's the max you'd lose.`
-      : `${p.quantity} contracts, about $${p.costUsd.toFixed(2)} at current price.`,
-    `Why: ${why}`,
-    `Review & approve: ${approvalUrl(p)}`,
+    `${p.kind === "open" ? "" : `${label.toLowerCase()}: `}${m.eventTitle}${m.title && m.title !== m.eventTitle ? `, ${m.title}` : ""}${mock}: ${buying ? "buy" : "sell"} ${p.side} at ${Math.round(p.limitPrice * 100)}c, me ${pct(p.estimatedProbability)} vs market ${pct(p.marketProbability)}, ${buying ? `max loss $${p.costUsd.toFixed(0)}` : `about $${p.costUsd.toFixed(0)}`}`,
+    `approve: ${approvalUrl(p)}`,
   ];
   return lines.join("\n");
 }
