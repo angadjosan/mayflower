@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { RiskLimits, User, UserThesis } from "@/lib/types";
-import { Badge, Button, Card } from "./ui";
+import { Button } from "./ui";
 
 export function Profile({
   user, theses, onSave, onLinkGemini, busy,
@@ -42,26 +42,34 @@ export function Profile({
     setSaved(true);
   };
 
-  const input = "w-full rounded-xl bg-stone-100 px-3 py-2 text-sm outline-none ring-money-400 transition focus:bg-white focus:ring-2";
+  const input = "h-10 w-full rounded-xl border border-line-strong bg-surface px-3 text-sm text-fg outline-none transition placeholder:text-subtle focus:border-accent";
   return (
-    <Card title="You & your limits">
-      <div className="mb-4">
-        <div className="mb-2 text-xs font-semibold text-stone-500">What Mayflower knows you care about</div>
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+      <div>
+        <h3 className="text-[15px] font-semibold tracking-tight text-fg">What Mayflower knows about you</h3>
+        <p className="mt-1 text-[13px] text-muted">Beliefs picked up from your texts and connected apps. Used to find ideas, never as permission to trade.</p>
         {theses.length === 0 ? (
-          <p className="text-sm text-stone-400">Nothing yet. Tell Mayflower your interests in chat or iMessage.</p>
+          <p className="mt-4 text-sm text-subtle">Nothing yet. Text Mayflower what you follow and what you believe.</p>
         ) : (
-          <ul className="flex flex-col items-start gap-1">
+          <ul className="mt-4 divide-y divide-line border-y border-line">
             {theses.map((t) => (
-              <li key={t.id} className="max-w-full rounded-[18px] rounded-bl-[6px] bg-bubble px-3 py-1.5 text-sm">
-                <span className="font-semibold">{t.topic}</span>
-                <span className="text-stone-700">: {t.belief}</span>{" "}
-                <span className="text-xs text-stone-500">({Math.round(t.confidence * 100)}% sure, via {t.source})</span>
+              <li key={t.id} className="flex items-start gap-3 py-3 text-sm">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-fg">{t.topic}</div>
+                  {t.belief && <div className="mt-0.5 text-[13px] leading-snug text-fg-2">{t.belief}</div>}
+                </div>
+                <div className="num shrink-0 text-right text-xs text-muted">
+                  {Math.round(t.confidence * 100)}%
+                  <div className="text-[11px] text-subtle">{t.source}</div>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </div>
 
+      <div>
+      <h3 className="mb-4 text-[15px] font-semibold tracking-tight text-fg">Limits</h3>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Name"><input className={input} value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
         <Field label="iMessage handle"><input className={input} value={form.handle} placeholder="+1 555… or Apple ID" onChange={(e) => set("handle", e.target.value)} /></Field>
@@ -79,19 +87,20 @@ export function Profile({
           <Field label="Excluded topics (comma separated)"><input className={input} value={form.excluded} onChange={(e) => set("excluded", e.target.value)} /></Field>
         </div>
       </div>
-      <p className="mt-2 text-xs text-stone-400">Your budget is a limit, not a deposit. Funds stay in your own Gemini account.</p>
+      <p className="mt-3 text-xs text-subtle">Your budget is a limit, not a deposit. Funds stay in your own exchange accounts.</p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <Button variant="primary" onClick={save} disabled={busy || !dirty}>Save</Button>
-        {saved && <span className="animate-pop text-xs font-semibold text-money-600">✓ Saved</span>}
+        {saved && <span className="animate-fade text-xs text-muted">Saved</span>}
         <div className="ml-auto">
           {user.geminiLinked ? (
-            <Badge tone="accent">Gemini linked (sandbox, shared account)</Badge>
+            <span className="text-xs text-muted">Gemini linked</span>
           ) : (
             <Button onClick={onLinkGemini} disabled={busy}>Connect Gemini</Button>
           )}
         </div>
       </div>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -110,7 +119,7 @@ function toForm(u: User) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-stone-500">{label}</span>
+      <span className="mb-1.5 block text-xs text-muted">{label}</span>
       {children}
     </label>
   );

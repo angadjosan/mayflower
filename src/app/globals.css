@@ -1,63 +1,207 @@
 @import "tailwindcss";
 
+/* `dark:` follows the system unless the theme toggle forced light, and always applies when forced dark. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+}
+
+/*
+ * Design tokens. Near-black / white base, one cyan accent, green/red reserved for P&L.
+ * Light is the default; dark applies under prefers-color-scheme unless the user forced light,
+ * and always under [data-theme="dark"].
+ */
 :root {
-  /* iOS "grouped" background so white cards float like Wallet / Cash App */
-  --background: #f2f2f7;
-  --foreground: #111114;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --sunken: #f6f7f8;
+  --raised: #fbfbfc;
+  --line: #ececee;
+  --line-strong: #dcdde0;
+  --fg: #0b0c0e;
+  --fg-2: #3c3f44;
+  --muted: #6b7079;
+  --subtle: #9aa0a8;
+  --accent: #0891b2;
+  --accent-fg: #ffffff;
+  --accent-soft: #e6f7fb;
+  --up: #0f9d58;
+  --up-soft: #e8f6ee;
+  --down: #e5484d;
+  --down-soft: #fdecec;
+  --warn: #b45309;
+  --warn-soft: #fdf3e3;
+  --ink: #0b0c0e; /* primary button */
+  --ink-fg: #ffffff;
+  --shadow: 0 1px 2px rgba(16, 18, 22, 0.04), 0 8px 24px -16px rgba(16, 18, 22, 0.12);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #050607;
+    --surface: #0d0f11;
+    --sunken: #121417;
+    --raised: #15181b;
+    --line: #1d2024;
+    --line-strong: #2a2e33;
+    --fg: #f3f4f6;
+    --fg-2: #c9ccd1;
+    --muted: #8b9099;
+    --subtle: #5d636c;
+    --accent: #22d3ee;
+    --accent-fg: #031015;
+    --accent-soft: rgba(34, 211, 238, 0.1);
+    --up: #3ddc84;
+    --up-soft: rgba(61, 220, 132, 0.1);
+    --down: #ff6369;
+    --down-soft: rgba(255, 99, 105, 0.1);
+    --warn: #f5b454;
+    --warn-soft: rgba(245, 180, 84, 0.1);
+    --ink: #f3f4f6;
+    --ink-fg: #050607;
+    --shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #050607;
+  --surface: #0d0f11;
+  --sunken: #121417;
+  --raised: #15181b;
+  --line: #1d2024;
+  --line-strong: #2a2e33;
+  --fg: #f3f4f6;
+  --fg-2: #c9ccd1;
+  --muted: #8b9099;
+  --subtle: #5d636c;
+  --accent: #22d3ee;
+  --accent-fg: #031015;
+  --accent-soft: rgba(34, 211, 238, 0.1);
+  --up: #3ddc84;
+  --up-soft: rgba(61, 220, 132, 0.1);
+  --down: #ff6369;
+  --down-soft: rgba(255, 99, 105, 0.1);
+  --warn: #f5b454;
+  --warn-soft: rgba(245, 180, 84, 0.1);
+  --ink: #f3f4f6;
+  --ink-fg: #050607;
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-up: var(--up);
+  --color-up-soft: var(--up-soft);
+  --color-down: var(--down);
+  --color-down-soft: var(--down-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-ink: var(--ink);
+  --color-ink-fg: var(--ink-fg);
+  /* Legacy names kept so older markup (and other components) still resolve. */
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --shadow-card: var(--shadow);
 }
 
 @theme {
-  /* Money green: the accent for anything that moves dollars */
+  /* Legacy palette, still referenced by a few shared components. */
   --color-money-50: #e9fbef;
   --color-money-100: #cbf6da;
-  --color-money-200: #98ecb6;
-  --color-money-300: #5fdf8e;
   --color-money-400: #2dd36c;
   --color-money-500: #00c244;
   --color-money-600: #00a63e;
   --color-money-700: #008a33;
-  --color-money-800: #076c2b;
-  --color-money-900: #0a5524;
-
-  /* iMessage */
   --color-imsg: #0a84ff;
   --color-imsg-dark: #0070e0;
   --color-bubble: #e9e9eb;
 
-  --animate-pop: pop 260ms cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
-  --animate-rise: rise 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-rise: rise 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-fade: fade 240ms ease-out both;
+  --animate-pop: pop 220ms cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
   --animate-dot: dot 1.2s ease-in-out infinite;
 
-  @keyframes pop {
-    0% { opacity: 0; transform: scale(0.85) translateY(6px); }
-    100% { opacity: 1; transform: scale(1) translateY(0); }
-  }
   @keyframes rise {
-    0% { opacity: 0; transform: translateY(8px); }
+    0% { opacity: 0; transform: translateY(6px); }
     100% { opacity: 1; transform: translateY(0); }
   }
-  @keyframes dot {
-    0%, 60%, 100% { opacity: 0.35; transform: translateY(0); }
-    30% { opacity: 1; transform: translateY(-3px); }
+  @keyframes fade {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
   }
+  @keyframes pop {
+    0% { opacity: 0; transform: scale(0.96); }
+    100% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes dot {
+    0%, 60%, 100% { opacity: 0.35; }
+    30% { opacity: 1; }
+  }
+}
+
+html {
+  background: var(--bg);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg);
+  color: var(--fg);
   font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  letter-spacing: -0.01em;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Ticker marquee: edges fade so the strip reads as continuous. */
+.fade-x {
+  mask-image: linear-gradient(to right, transparent, #000 16px, #000 calc(100% - 32px), transparent);
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-money-400) 35%, transparent);
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
 
 @media (prefers-reduced-motion: reduce) {
