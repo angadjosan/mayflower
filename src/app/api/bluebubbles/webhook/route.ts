@@ -22,15 +22,6 @@ function secretOk(given: string | null): boolean {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-// Who the bot answers. The bridge Mac may be signed into a personal Apple ID, so the default is
-// nobody: ALLOWED_SENDERS="*" answers everyone, otherwise a comma list of phones/emails.
-function senderAllowed(address: string): boolean {
-  const raw = (process.env.ALLOWED_SENDERS ?? "").trim();
-  if (raw === "*") return true;
-  const norm = (a: string) => a.trim().toLowerCase().replace(/[^\d+@a-z.]/g, "");
-  return raw.split(",").map(norm).filter(Boolean).includes(norm(address));
-}
-
 // BlueBubbles retries webhooks it thinks failed; skip message guids we've already taken.
 const seen = new Set<string>();
 function firstTime(guid?: string): boolean {
@@ -53,8 +44,8 @@ export async function POST(req: Request) {
   }
   const chatGuid = body.data?.chats?.[0]?.guid;
   const isGroup = Boolean(chatGuid?.includes(";+;"));
-  if (!senderAllowed(address) || (isGroup && process.env.ALLOW_GROUP_CHATS !== "1")) {
-    console.log("[bluebubbles] ignored", isGroup ? "group message" : "sender not in ALLOWED_SENDERS");
+  if (isGroup && process.env.ALLOW_GROUP_CHATS !== "1") {
+    console.log("[bluebubbles] ignored group message (ALLOW_GROUP_CHATS != 1)");
     return NextResponse.json({ ok: true, ignored: true });
   }
   // Research can take a while; acknowledge the webhook now and reply over iMessage when done.
