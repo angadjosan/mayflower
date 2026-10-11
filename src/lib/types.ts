@@ -48,6 +48,7 @@ export interface Market {
   lastPrice?: number;
   volume?: number;
   source: "gemini" | "mock"; // honest labeling
+  paperOnly?: boolean; // real production market not listed in sandbox: discovery only, orders are always simulated
 }
 
 export interface Citation {

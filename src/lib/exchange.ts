@@ -9,21 +9,35 @@ const BASE_URL = (process.env.GEMINI_EXCHANGE_BASE_URL || "https://api.sandbox.g
 
 export const exchangeMode: "sandbox" | "simulated" = API_KEY && API_SECRET ? "sandbox" : "simulated";
 
-// Verified: public, no auth. GET /v1/prediction-markets/events?status=active&limit=N
+// All paths below verified against the sandbox on 2026-10-11 (a real order was placed, filled and found in history).
+// Public, no auth. GET /v1/prediction-markets/events?status=active&limit=N
 const EVENTS_PATH = "/v1/prediction-markets/events";
-// Verified from docs: POST /v1/prediction-markets/order (authenticated)
 const ORDER_PATH = "/v1/prediction-markets/order";
-// TODO: unverified paths (docs pages exist as "Get Active Orders" / "Get Order History"; exact paths guessed)
-const ACTIVE_ORDERS_PATH = "/v1/prediction-markets/orders/active";
-const ORDER_HISTORY_PATH = "/v1/prediction-markets/orders/history";
+const ACTIVE_ORDERS_PATH = "/v1/prediction-markets/orders/active"; // body {symbol?, limit<=100, offset}
+const ORDER_HISTORY_PATH = "/v1/prediction-markets/orders/history"; // body {status?, symbol?, limit<=1000, offset}
+// Orders fail with TERMS_NOT_ACCEPTED until this is called once per account.
+const TERMS_ACCEPT_PATH = "/v1/prediction-markets/terms/accept";
 // Standard Gemini REST balances endpoint (not prediction-market specific)
 const BALANCES_PATH = "/v1/balances";
 const ACCOUNT = process.env.GEMINI_EXCHANGE_ACCOUNT || "primary";
+// Sandbox only lists crypto/commodity markets. Set to 1 to also discover production markets (sports, politics...)
+// using public data; those can't be ordered in sandbox, so they're marked paperOnly and always simulated.
+const INCLUDE_PRODUCTION = process.env.GEMINI_DISCOVERY_INCLUDE_PRODUCTION === "1";
+const PRODUCTION_URL = "https://api.gemini.com";
+// Keys are created with a nonce mode: "incremental" accepts ms timestamps; "time-based" needs Unix seconds.
+const NONCE_SECONDS = process.env.GEMINI_EXCHANGE_NONCE === "seconds";
+let lastNonce = 0;
+function nextNonce(): number {
+  const n = NONCE_SECONDS ? Math.floor(Date.now() / 1000) : Date.now();
+  // Incremental keys reject a repeated nonce; seconds mode tolerates repeats within its 30s window.
+  lastNonce = NONCE_SECONDS ? n : Math.max(n, lastNonce + 1);
+  return lastNonce;
+}
 
 // ---------- auth ----------
 async function privatePost<T>(path: string, body: Record<string, unknown> = {}): Promise<T> {
   // Master API keys must name a sub-account; account-scoped keys ignore it.
-  const payload = { request: path, nonce: Date.now(), account: ACCOUNT, ...body };
+  const payload = { request: path, nonce: nextNonce(), account: ACCOUNT, ...body };
   const b64 = Buffer.from(JSON.stringify(payload)).toString("base64");
   const sig = crypto.createHmac("sha384", API_SECRET!).update(b64).digest("hex");
   const res = await fetch(BASE_URL + path, {
@@ -60,13 +74,18 @@ function descriptionText(d: any): string | undefined {
   }
 }
 
-function mapEvents(events: any[]): Market[] {
+// Contracts this close to expiry can't be researched and approved in time.
+const MIN_TIME_TO_EXPIRY_MS = 10 * 60 * 1000;
+
+function mapEvents(events: any[], paperOnly = false): Market[] {
   const out: Market[] = [];
+  const cutoff = Date.now() + MIN_TIME_TO_EXPIRY_MS;
   for (const ev of events) {
     const contracts: any[] = ev.contracts ?? [];
     for (const c of contracts) {
       if (!c.instrumentSymbol) continue;
       if (c.marketState && c.marketState !== "open") continue;
+      if (c.expiryDate && Date.parse(c.expiryDate) < cutoff) continue;
       const p = c.prices ?? {};
       const yesAsk = num(p.buy?.yes);
       const yesBid = num(p.sell?.yes);
@@ -87,6 +106,7 @@ function mapEvents(events: any[]): Market[] {
         lastPrice: num(p.lastTradePrice),
         volume: num(c.volume ?? ev.volume),
         source: "gemini",
+        ...(paperOnly ? { paperOnly: true } : {}),
       });
     }
   }
@@ -125,22 +145,36 @@ const MOCK_MARKETS: Market[] = [
 
 let cache: { at: number; markets: Market[] } | null = null;
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+async function fetchEvents(base: string, limit: number): Promise<any[]> {
+  const res = await fetch(`${base}${EVENTS_PATH}?status=active&limit=${limit}`, {
+    signal: AbortSignal.timeout(10000),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`events ${res.status}`);
+  const json = await res.json();
+  return Array.isArray(json) ? json : json.data ?? [];
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export async function listMarkets(): Promise<Market[]> {
   if (cache && Date.now() - cache.at < 60_000) return cache.markets;
   let markets: Market[] = [];
-  try {
-    const res = await fetch(`${BASE_URL}${EVENTS_PATH}?status=active&limit=100`, {
-      signal: AbortSignal.timeout(10000),
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const json = await res.json();
-      markets = mapEvents(Array.isArray(json) ? json : json.data ?? []);
-    }
-  } catch (e) {
-    console.warn("[exchange] listMarkets failed, using mock:", (e as Error).message);
+  const [own, prod] = await Promise.allSettled([
+    fetchEvents(BASE_URL, 500),
+    INCLUDE_PRODUCTION && BASE_URL !== PRODUCTION_URL ? fetchEvents(PRODUCTION_URL, 500) : Promise.resolve([]),
+  ]);
+  if (own.status === "fulfilled") markets = mapEvents(own.value);
+  else console.warn("[exchange] listMarkets failed:", (own.reason as Error).message);
+  if (prod.status === "fulfilled" && prod.value.length) {
+    // Same instrument listed on both: keep the tradable (sandbox) one.
+    const tradable = new Set(markets.map((m) => m.id));
+    markets = [...markets, ...mapEvents(prod.value, true).filter((m) => !tradable.has(m.id))];
   }
-  if (!markets.length) markets = MOCK_MARKETS;
+  if (!markets.length) {
+    console.warn("[exchange] no live markets, using mock markets");
+    markets = MOCK_MARKETS;
+  }
   cache = { at: Date.now(), markets };
   return markets;
 }
@@ -183,7 +217,7 @@ export async function placeOrder(o: {
   clientOrderId: string;
 }): Promise<OrderResult> {
   const market = await getMarket(o.marketId);
-  const simulate = exchangeMode === "simulated" || !market || market.source === "mock";
+  const simulate = exchangeMode === "simulated" || !market || market.source === "mock" || market.paperOnly;
 
   if (simulate) {
     if (!market) return { status: "rejected", filledQuantity: 0, mode: "simulated", error: "Unknown market" };
@@ -197,17 +231,26 @@ export async function placeOrder(o: {
       : { exchangeOrderId: `sim-${o.clientOrderId}`, status: "open", filledQuantity: 0, mode: "simulated" };
   }
 
+  const body = {
+    symbol: o.marketId,
+    orderType: "limit",
+    side: o.action,
+    quantity: String(o.quantity),
+    price: o.limitPrice.toFixed(2),
+    outcome: o.side === "YES" ? "yes" : "no",
+    timeInForce: "good-til-cancel",
+    clientOrderId: o.clientOrderId,
+  };
   try {
-    const resp = await privatePost<any>(ORDER_PATH, {
-      symbol: o.marketId,
-      orderType: "limit",
-      side: o.action,
-      quantity: String(o.quantity),
-      price: o.limitPrice.toFixed(2),
-      outcome: o.side === "YES" ? "yes" : "no",
-      timeInForce: "good-til-cancel",
-      clientOrderId: o.clientOrderId,
-    });
+    let resp: any;
+    try {
+      resp = await privatePost<any>(ORDER_PATH, body);
+    } catch (e) {
+      if (!/TERMS_NOT_ACCEPTED/i.test((e as Error).message)) throw e;
+      // First order on a fresh account: accept the prediction-market terms once, then retry.
+      await privatePost(TERMS_ACCEPT_PATH);
+      resp = await privatePost<any>(ORDER_PATH, body);
+    }
     const s = mapStatus(resp);
     return { exchangeOrderId: resp.orderId != null ? String(resp.orderId) : undefined, ...s, mode: "sandbox" };
   } catch (e) {
@@ -219,9 +262,9 @@ export async function getOrderStatus(
   exchangeOrderId: string,
 ): Promise<{ status: Order["status"]; filledQuantity: number; avgFillPrice?: number } | undefined> {
   if (exchangeMode === "simulated" || exchangeOrderId.startsWith("sim-")) return undefined;
-  for (const path of [ACTIVE_ORDERS_PATH, ORDER_HISTORY_PATH]) {
+  for (const [path, body] of [[ACTIVE_ORDERS_PATH, { limit: 100 }], [ORDER_HISTORY_PATH, { limit: 500 }]] as const) {
     try {
-      const resp = await privatePost<any>(path, {});
+      const resp = await privatePost<any>(path, body);
       const list: any[] = Array.isArray(resp) ? resp : resp.orders ?? resp.data ?? [];
       const found = list.find((x) => String(x.orderId) === exchangeOrderId);
       if (found) return mapStatus(found);

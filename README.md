@@ -30,4 +30,23 @@ With no keys set, every integration runs in a **mock or simulated mode, and the 
 - `src/app/api/*`: chat, BlueBubbles webhook, state, discover, approve/reject, settings, cron monitor
 - `src/app/approve/[id]`: signed exact-order confirmation page, linked from iMessage
 
-See `docs/INTEGRATIONS.md` for setup and for which endpoints are unverified.
+See `docs/INTEGRATIONS.md` for setup.
+
+## Security when exposed through a tunnel
+
+The approval links and BlueBubbles webhook need a public URL (ngrok, cloudflared), which also exposes the dashboard. So:
+
+- Signed out, the dashboard and its APIs fall back to the demo user **only for direct `localhost` requests**. Through the tunnel they return 401 and the page sends you to `/login` (a magic link over iMessage). `ALLOW_DEMO_USER=1` disables this check; don't use it when public.
+- `/api/reset` and `/api/auth/dev-login` only answer direct localhost requests in dev.
+- Set `BLUEBUBBLES_WEBHOOK_SECRET` and register the webhook as `.../api/bluebubbles/webhook?secret=...`. With BlueBubbles configured, the webhook refuses requests without it.
+- Set `SESSION_SECRET` before `next start`.
+
+## Demo script (what actually trades)
+
+Checked on 2026-10-11: the Gemini **sandbox only lists crypto and commodity markets** (BTC/ETH/SOL price brackets, gold, oil). Production lists sports and politics, but sandbox can't trade them.
+
+- **Real sandbox fill:** onboard with crypto or commodities interests, e.g. *"I follow Bitcoin and gold, I think BTC holds up this week, I can risk $200, conservative."* Proposals use sandbox instruments (`GEMI-...`) and an approved order goes to the sandbox, then gets reconciled from `orders/active` / `orders/history`.
+- **Football from the spec:** set `GEMINI_DISCOVERY_INCLUDE_PRODUCTION=1`. Seahawks and other production markets are discovered from real public data, but their orders are **simulated and labeled paper-only**. Say so on stage.
+- Sandbox books are sometimes empty (no quotes) for a few minutes around the hourly rollover. Discovery then falls back to labeled mock markets; wait a minute and retry.
+- Leave the group-chat contests out of the main demo. They are beyond the spec, and the pitch is about trust.
+- Run `npm test` for the risk engine tests.
