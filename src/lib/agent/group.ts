@@ -20,9 +20,13 @@ const PICK_TTL_MS = 6 * 3600 * 1000;
 const pct = (n: number) => `${n >= 0 ? "+" : ""}${(n * 100).toFixed(1)}%`;
 const yesAsk = (m: Market) => m.yesAsk ?? m.lastPrice ?? 0.5;
 const noAsk = (m: Market) => m.noAsk ?? (m.yesBid != null ? 1 - m.yesBid : 1 - (m.lastPrice ?? 0.5));
-const bidFor = (m: Market, side: Side) =>
-  side === "YES" ? m.yesBid ?? m.lastPrice ?? 0 : m.noBid ?? (m.yesAsk != null ? 1 - m.yesAsk : 1 - (m.lastPrice ?? 1));
-const marketLabel = (m: Market) => `${m.eventTitle}${m.title && m.title !== m.eventTitle ? ` — ${m.title}` : ""}`;
+/** Mid price for a side — contests score at mid so a wide bid/ask spread doesn't look like an instant loss. */
+const midFor = (m: Market, side: Side) => {
+  const yesMid = m.yesBid != null && m.yesAsk != null ? (m.yesBid + m.yesAsk) / 2 : m.lastPrice ?? m.yesAsk ?? m.yesBid ?? 0.5;
+  return side === "YES" ? yesMid : 1 - yesMid;
+};
+const marketLabel = (m: Market) =>
+  !m.title || m.title.startsWith(m.eventTitle) ? m.title || m.eventTitle : `${m.eventTitle} — ${m.title}`;
 
 export function displayName(u?: User) {
   if (!u) return "someone";
@@ -241,6 +245,11 @@ async function pitch(group: Group, contest: Contest, sender: User, text: string)
   return `${displayName(sender)} → ${match.side} on ${marketLabel(match.market)} @ ${Math.round(price * 100)}¢ (my estimate ${Math.round(pSide * 100)}%, ${take}). Sent you a private approval link.`;
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  pending: "awaiting approval", approved: "submitting", executed: "order open, not filled yet",
+  failed: "order failed", rejected: "declined", expired: "expired",
+};
+
 interface Standing { user: User; pitch: string; market?: Market; side?: Side; status: string; ret: number | null }
 
 async function standings(contest: Contest): Promise<Standing[]> {
@@ -252,11 +261,11 @@ async function standings(contest: Contest): Promise<Standing[]> {
     if (!p) continue;
     const pos = db.positions.find((x) => x.proposalId === p.id);
     if (!pos) {
-      rows.push({ user, pitch: e.pitch, market: p.market, side: p.side, status: p.status === "pending" ? "awaiting approval" : p.status, ret: null });
+      rows.push({ user, pitch: e.pitch, market: p.market, side: p.side, status: STATUS_LABEL[p.status] ?? p.status, ret: null });
       continue;
     }
     const fresh = (await getMarket(pos.marketId)) ?? pos.market;
-    const value = pos.quantity * bidFor(fresh, pos.side) + pos.realizedPnlUsd;
+    const value = pos.quantity * midFor(fresh, pos.side) + pos.realizedPnlUsd;
     const cost = pos.avgEntryPrice * pos.quantity || pos.costBasisUsd;
     rows.push({ user, pitch: e.pitch, market: fresh, side: pos.side, status: "live", ret: cost > 0 ? (value - cost) / cost : 0 });
   }
@@ -271,7 +280,7 @@ async function leaderboard(group: Group) {
   const lines = rows.map((r, i) =>
     `${i + 1}. ${displayName(r.user)} ${r.ret == null ? `(${r.status})` : pct(r.ret)} — ${r.side} ${r.market ? marketLabel(r.market) : r.pitch}`);
   const ends = contest.endsAt && contest.status === "active" ? `\nScoring ${new Date(contest.endsAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}. Reward: ${contest.reward}.` : `\nReward: ${contest.reward}.`;
-  return `${contest.status === "ended" ? "Final standings" : "Leaderboard"} (% return, current prices):\n${lines.join("\n")}${ends}`;
+  return `${contest.status === "ended" ? "Final standings" : "Leaderboard"} (% return at mid price):\n${lines.join("\n")}${ends}`;
 }
 
 /** Score the active contest at current prices and announce the winner. Positions stay open. */

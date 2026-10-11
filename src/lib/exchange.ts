@@ -18,10 +18,12 @@ const ACTIVE_ORDERS_PATH = "/v1/prediction-markets/orders/active";
 const ORDER_HISTORY_PATH = "/v1/prediction-markets/orders/history";
 // Standard Gemini REST balances endpoint (not prediction-market specific)
 const BALANCES_PATH = "/v1/balances";
+const ACCOUNT = process.env.GEMINI_EXCHANGE_ACCOUNT || "primary";
 
 // ---------- auth ----------
 async function privatePost<T>(path: string, body: Record<string, unknown> = {}): Promise<T> {
-  const payload = { request: path, nonce: Date.now().toString(), ...body };
+  // Master API keys must name a sub-account; account-scoped keys ignore it.
+  const payload = { request: path, nonce: Date.now(), account: ACCOUNT, ...body };
   const b64 = Buffer.from(JSON.stringify(payload)).toString("base64");
   const sig = crypto.createHmac("sha384", API_SECRET!).update(b64).digest("hex");
   const res = await fetch(BASE_URL + path, {
@@ -38,7 +40,8 @@ async function privatePost<T>(path: string, body: Record<string, unknown> = {}):
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`Gemini ${path} ${res.status}: ${text.slice(0, 300)}`);
-  return JSON.parse(text) as T;
+  // Order ids exceed Number.MAX_SAFE_INTEGER; quote long integers so they survive JSON.parse intact.
+  return JSON.parse(text.replace(/([:\[,]\s*)(\d{16,})(?=\s*[,}\]])/g, '$1"$2"')) as T;
 }
 
 // ---------- markets ----------

@@ -2,10 +2,11 @@
 import type { Citation } from "./types";
 
 const apiKey = process.env.CONTEXT_DEV_API_KEY;
-const baseUrl = (process.env.CONTEXT_DEV_BASE_URL || "https://api.context.dev/v1").replace(/\/$/, "");
+// Accept the base URL with or without a trailing /v1.
+const baseUrl = (process.env.CONTEXT_DEV_BASE_URL || "https://api.context.dev").replace(/\/$/, "").replace(/\/v1$/, "");
 // From context.dev openapi.json: POST /web/search, Authorization: Bearer <key>,
 // body { query, numResults (10..100) }, response { results: [{ url, title, description }] }.
-const SEARCH_PATH = "/web/search";
+const SEARCH_PATH = "/v1/web/search";
 
 export const researchMode: "context.dev" | "mock" = apiKey ? "context.dev" : "mock";
 

@@ -19,3 +19,10 @@
 - Env: `CONTEXT_DEV_API_KEY`, `CONTEXT_DEV_BASE_URL` (default `https://api.context.dev/v1`).
 - Endpoint, taken from context.dev's `openapi.json`: `POST /web/search` with `Authorization: Bearer <key>` and body `{query, numResults}` (numResults minimum is 10). The response is `{results:[{url,title,description,...}]}`, sliced to `limit`.
 - **Unverified:** no live call was made because we had no key. If the key is missing or the call errors, the function returns mock citations: titles start with `[mock] `, URLs are `https://example.com/mock/...`, and `source` is `"mock"`.
+
+## Group chats (`src/lib/agent/group.ts`)
+- Add Mayflower's iMessage account to a group. BlueBubbles group messages (chat guid contains `;+;`) are routed to `handleGroupMessage`; replies go back to the group via `sendToChat`.
+- **Contest:** "Mayflower start a contest, $10 each, 1 week, loser buys dinner" → members pitch ("my pick: …") → each gets a fixed-stake trade and a *private* approval link → "Mayflower leaderboard" ranks by % return at mid price → scored at `endsAt` by the cron, or "Mayflower end contest". Positions stay open after scoring. Mayflower never holds the pot; the reward is a free-text IOU.
+- **Group pick:** "Mayflower what should we bet on?" reads the last ~50 group messages, maps them to one live market, and members reply "in" to get their own trade.
+- **Always listening:** every message is stored; after 12+ messages and 30+ min since the last suggestion, Claude checks whether the chat contains a strong tradeable opinion and only then posts. Without an LLM key it never interrupts.
+- Approval links are only ever sent by DM — anyone holding a link can approve that order.
