@@ -16,6 +16,7 @@
 - Note: the sandbox right now mostly lists short-dated crypto and commodity contracts.
 
 ## Venue routing (`src/lib/exchange.ts`)
+- Account, wallet and funding steps for each venue are in `docs/EXCHANGE_SETUP.md`.
 - Gemini is the primary venue. `listMarkets()` merges Gemini, Polymarket and Hyperliquid, in that priority order. A market from a lower-priority venue is included only when no higher-priority venue lists an orderable equivalent. The goal is to place a trade on Polymarket or Hyperliquid only when Gemini doesn't offer it.
 - "Equivalent" is decided by `sameQuestion()`: word overlap of at least 0.65 (Jaccard, stopwords removed), **identical numbers** (strikes, years, dates), any "— outcome" labels must overlap, and expiries no more than 7 days apart. Dedupe only runs across venues, so sibling contracts on one venue are never merged. Paper-only listings (Gemini production markets, Hyperliquid mainnet seen from testnet) give way to an orderable equivalent on any venue.
 - Market ids carry the venue: Gemini instrument symbols, `PM-<conditionId>`, and `HL-<T|M>-<outcome>`. `placeOrder`, `getOrderStatus` and `getBalance` route by venue. `Order.venue` records it, and discovery sizes each pick against the balance of the venue it trades on.

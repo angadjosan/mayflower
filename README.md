@@ -34,6 +34,8 @@ With no keys set, every integration runs in a **mock or simulated mode, and the 
 
 See `docs/INTEGRATIONS.md` for setup.
 
+**Trading venues (Gemini, Polymarket, Hyperliquid):** see `docs/EXCHANGE_SETUP.md` for what each one uses, what to do besides adding keys, and the gotchas (Polymarket geo-blocking on Vercel, wallet approvals, default risk limits).
+
 ## Security when exposed through a tunnel
 
 The approval links and BlueBubbles webhook need a public URL (ngrok, cloudflared), which also exposes the dashboard. So:
