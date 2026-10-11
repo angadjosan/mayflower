@@ -58,7 +58,14 @@ const agent = {
   // first_message override: settlement calls open with their own line (ringUserAbout); every other call keeps first_message.
   platform_settings: {
     auth: { enable_auth: false }, call_limits: { agent_concurrency_limit: 3, daily_limit: 60 },
-    overrides: { conversation_config_override: { agent: { first_message: true }, conversation: { text_only: true } } },
+    overrides: {
+      conversation_config_override: { agent: { first_message: true }, conversation: { text_only: true } },
+      // Inbound calls fetch their variables and opener from /api/voice/inbound before connecting.
+      enable_conversation_initiation_client_data_from_webhook: true,
+    },
+    workspace_overrides: {
+      conversation_initiation_client_data_webhook: { url: `${process.env.APP_URL}/api/voice/inbound`, request_headers: { [VOICE_SECRET_HEADER]: secret } },
+    },
   },
 };
 const id = process.env.ELEVENLABS_AGENT_ID;
