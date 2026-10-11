@@ -29,6 +29,8 @@ export async function GET(req: Request) {
     return {
       ...pos,
       originalThesis: p?.thesis,
+      thesis: p?.thesis,
+      estimatedProbability: p?.estimatedProbability,
       sizingExplanation: p?.sizingExplanation,
       citations: r?.citations ?? [],
     };
