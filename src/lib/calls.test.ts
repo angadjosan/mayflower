@@ -13,7 +13,8 @@ describe("outboundCallPayload", () => {
     const { outboundCallPayload } = await import("./calls");
     const plain = outboundCallPayload("user_1", "+14155550100", { proposal_id: "" });
     expect(plain.conversation_initiation_client_data).not.toHaveProperty("conversation_config_override");
-    expect(Object.keys(plain.conversation_initiation_client_data.dynamic_variables).sort()).toEqual(["call_token", "proposal_id"]);
+    // Every tool variable rides on every call, or ElevenLabs hangs up on pickup.
+    expect(Object.keys(plain.conversation_initiation_client_data.dynamic_variables).sort()).toEqual(["call_opener", "call_reason", "call_token", "proposal_id", "result_summary"]);
     const s = outboundCallPayload("user_1", "+14155550100", { call_reason: "settlement_loss", call_opener: "BRO.", result_summary: "x" }, "BRO.");
     expect(s.conversation_initiation_client_data).toMatchObject({
       dynamic_variables: { call_reason: "settlement_loss", call_opener: "BRO." },
