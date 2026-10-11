@@ -12,7 +12,10 @@ export function enqueueInbound(app: App, msg: InboundMessage): Promise<void> {
   const prev = queues.get(msg.from) ?? Promise.resolve();
   const next = prev.then(() => handleInbound(app, msg)).catch(async (e) => {
     console.error('[pipeline]', e);
-    await app.messenger.send({ to: msg.from, text: `Something broke on my side while working on that. Text it again in a minute.` })
+    const text = APPROVE_RE.test(msg.text ?? '')
+      ? `Something broke while placing that order. It may have gone through: check the case page before approving anything else.`
+      : `Something broke on my side while working on that. Text it again in a minute.`;
+    await app.messenger.send({ to: msg.from, text })
       .catch((e2) => console.error('[pipeline] fallback reply failed', e2));
   });
   queues.set(msg.from, next);
@@ -64,7 +67,9 @@ async function handleInbound(app: App, msg: InboundMessage): Promise<void> {
 
 async function reply(app: App, msg: InboundMessage, text: string, audio?: { data: Buffer; mime: string; filename: string }): Promise<void> {
   await app.messenger.send({ to: msg.from, text, audio });
-  await logMessage(app.db, { phone: msg.from, direction: 'out', channel: msg.channel, body: text, hasAudio: !!audio });
+  // the reply is already delivered; a logging failure must not trigger the error fallback
+  await logMessage(app.db, { phone: msg.from, direction: 'out', channel: msg.channel, body: text, hasAudio: !!audio })
+    .catch((e) => console.error('[pipeline] outbound log failed', e));
 }
 
 function welcome(u: UserProfile): string {

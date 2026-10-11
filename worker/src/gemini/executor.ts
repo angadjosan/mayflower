@@ -60,14 +60,14 @@ export class SandboxExecutor implements Executor {
       orderType: 'limit',
       side: 'buy',
       quantity: String(req.qty),
-      price: String(req.limitPrice),
+      price: req.limitPrice.toFixed(Math.max(2, (String(market.priceIncrement || 0.01).split('.')[1] ?? '').length)),
       outcome: req.side,
       timeInForce: 'good-til-cancel',
       makerOrCancel: false,
     };
     const placed = await this.post('/v1/prediction-markets/order', body);
     if (placed.status >= 400 || !placed.json || placed.json.orderId === undefined) {
-      const rejected = placed.status >= 400 && placed.status < 500;
+      const rejected = placed.status >= 400 && placed.status < 500 && ![408, 409].includes(placed.status);
       return { status: rejected ? 'rejected' : 'unknown', exchangeOrderId: null, filledQty: 0, avgPrice: null, error: `HTTP ${placed.status}: ${JSON.stringify(placed.json)}`, simulated: false, raw: placed.json };
     }
     let order = placed.json as GeminiOrder;
