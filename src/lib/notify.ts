@@ -1,6 +1,6 @@
 import { tx, load, id, now } from "./db";
 import type { ChatMessage } from "./types";
-import { bbEnabled, sendIMessage } from "./bluebubbles";
+import { sendDirect, transportEnabled } from "./transport";
 
 export function storeMessage(
   userId: string,
@@ -14,10 +14,11 @@ export function storeMessage(
   return m;
 }
 
-/** Store an agent message and deliver it over iMessage when the user has a handle. */
+/** Store an agent message and deliver it over iMessage or Discord when the user has a handle. */
 export async function sendToUser(userId: string, text: string): Promise<void> {
   const user = load().users.find((u) => u.id === userId);
-  const viaIMessage = Boolean(user?.handle && bbEnabled);
-  storeMessage(userId, "agent", text, viaIMessage ? "imessage" : "web");
-  if (user?.handle) await sendIMessage(user.handle, text);
+  // ChatMessage.channel has no "discord" value; messaging-surface deliveries (iMessage or Discord) are stored as "imessage".
+  const viaChat = transportEnabled(user?.handle);
+  storeMessage(userId, "agent", text, viaChat ? "imessage" : "web");
+  if (user?.handle) await sendDirect(user.handle, text);
 }

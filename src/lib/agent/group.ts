@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { tx, load, id, now, audit, getOrCreateUser } from "../db";
 import { generateJSON, generateText, llmEnabled } from "../llm";
 import { listMarkets, getMarket } from "../exchange";
-import { sendToChat, sendIMessage } from "../bluebubbles";
+import { sendToChat, sendDirect } from "../transport";
 import { storeMessage } from "../notify";
 import { approvalUrl } from "../execution";
 import { researchAndForecast, matchesTopic } from "./discover";
@@ -89,7 +89,7 @@ async function postToGroup(group: Group, text: string) {
 /** DM a member privately (approval links never go in the group). */
 async function dm(user: User, text: string) {
   storeMessage(user.id, "agent", text, user.handle ? "imessage" : "web");
-  if (user.handle) await sendIMessage(user.handle, text);
+  if (user.handle) await sendDirect(user.handle, text);
 }
 
 function activeContest(groupId: string): Contest | undefined {
