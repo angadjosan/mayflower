@@ -56,7 +56,7 @@ export async function callContext(userId: string, proposalId?: string): Promise<
   }
   const market = idea.market.title && idea.market.title !== idea.market.eventTitle ? `${idea.market.eventTitle}, ${idea.market.title}` : idea.market.eventTitle;
   return {
-    greeting: `yo, that ${idea.market.eventTitle} idea actually looks decent. want the quick rundown?`,
+    greeting: `that ${idea.market.eventTitle} idea actually looks decent. want the quick rundown?`,
     opener: `You are calling about a trade that looks good: ${market}, ${idea.side} at up to ${Math.round(idea.limitPrice * 100)} cents, max loss $${idea.costUsd.toFixed(0)}. Our estimate ${Math.round(idea.estimatedProbability * 100)}% vs the market's ${Math.round(idea.marketProbability * 100)}%. Walk them through why, answer questions, and if they want in, send the approval link (proposalId ${idea.id}).`,
   };
 }
@@ -75,7 +75,9 @@ export async function ringUser(userId: string, proposalId?: string): Promise<boo
         agent_id: process.env.ELEVENLABS_AGENT_ID,
         agent_phone_number_id: phoneNumberId,
         to_number: to,
-        conversation_initiation_client_data: { dynamic_variables: { call_token: callToken(userId), proposal_id: proposalId ?? "" } },
+        conversation_initiation_client_data: {
+          dynamic_variables: { call_token: callToken(userId), proposal_id: proposalId ?? "", greeting: (await callContext(userId, proposalId)).greeting },
+        },
       }),
       signal: AbortSignal.timeout(20_000),
     });
