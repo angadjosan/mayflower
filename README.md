@@ -71,7 +71,6 @@ The first milestone (spec v2): **a text from a phone produces a confirmed sandbo
 - No recheck of budget at approval time (exposure is checked when the proposal is made; approved/working orders are reserved).
 - `balance` is passed to the risk engine as unknown. Wire the real sandbox balance (`POST /v1/balances`).
 - Fake mode's keyword matcher can pick the wrong strike ("BTC above 100k" → "$84,100 or above"). The real LLM matcher is what fixes this.
-- Approval doesn't re-check market status or the current quote, so a market that closed or moved within the 10-minute window can still be sent.
 - `SandboxExecutor` has never run: the order body, status strings and `orders/history` fields come from the docs. Place one real sandbox order first (BTC short-expiry) and fix any field names. Unrecognized statuses map to `unknown`, not `open`.
 - REST order placement has no client order id (only the WebSocket `order.place` takes one), so a lost response can't be matched to its order. Moving the executor to WS `order.place` fixes this.
 - Orders are good-til-cancel. For the demo, immediate-or-cancel may be safer if Gemini supports it for prediction markets (unverified).
