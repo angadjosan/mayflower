@@ -6,6 +6,7 @@ import { placeOrder, getOrderStatus, venueLabel, venueOf } from "./exchange";
 import { sendToUser } from "./notify";
 import { exitLevels } from "./risk";
 import { onApproved } from "./receipts";
+import { ensureTestWallet, walletOf, adjustTestUsdc } from "./testWallet";
 
 const APP_URL = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
@@ -41,6 +42,8 @@ function applyFill(db: DB, order: TrackedOrder, qty: number, price: number) {
   const proposal = db.proposals.find((p) => p.id === order.proposalId);
   const t = now();
   order.appliedQuantity = (order.appliedQuantity ?? 0) + qty;
+  // Hyperliquid fills settle against the user's test wallet (testUSDC).
+  if ((order.venue ?? "gemini") === "hyperliquid") adjustTestUsdc(db, order.userId, (order.action === "buy" ? -1 : 1) * qty * price);
   if (order.action === "buy") {
     let pos = db.positions.find(
       (p) => p.userId === order.userId && p.marketId === order.marketId && p.side === order.side && p.status === "open",
@@ -128,6 +131,8 @@ export async function approveAndExecute(
   proposalId: string,
   token: string,
 ): Promise<{ ok: boolean; order?: Order; error?: string }> {
+  const owner = (await load()).proposals.find((x) => x.id === proposalId)?.userId;
+  if (owner) await ensureTestWallet(owner);
   // Validate + claim the proposal atomically (status -> approved) so double-taps can't double-execute.
   const pre = await tx((db) => {
     const p = db.proposals.find((x) => x.id === proposalId);
@@ -143,6 +148,9 @@ export async function approveAndExecute(
     if (user.paused) return { error: "Trading is paused. Unpause in settings to approve orders." };
     if (db.orders.some((o) => o.proposalId === p.id)) return { error: "An order already exists for this proposal." };
     if (p.kind === "open" || p.kind === "hedge") {
+      const w = walletOf(db, p.userId);
+      if (venueOf(p.market) === "hyperliquid" && w && w.usdc + 1e-9 < p.costUsd)
+        return { error: `Not enough testUSDC in your test wallet (${usd(w.usdc)}) for this ${usd(p.costUsd)} order.` };
       if (p.kind === "hedge" && !db.positions.some((x) => x.id === p.hedgeForPositionId && x.status === "open"))
         return { error: "The position this hedge protects is no longer open." };
       if (p.costUsd > user.limits.maxPerTradeUsd + 1e-9)
@@ -173,7 +181,7 @@ export async function approveAndExecute(
   let result: Awaited<ReturnType<typeof placeOrder>>;
   try {
     result = await placeOrder({
-      marketId: p.marketId, side: p.side, action, quantity: p.quantity, limitPrice: p.limitPrice, clientOrderId: p.id,
+      marketId: p.marketId, side: p.side, action, quantity: p.quantity, limitPrice: p.limitPrice, clientOrderId: p.id, userId: p.userId,
     });
   } catch (e) {
     result = { status: "error", filledQuantity: 0, mode: "simulated", venue: venueOf(p.market), error: e instanceof Error ? e.message : String(e) };
@@ -222,7 +230,7 @@ export async function reconcileOrders(userId?: string): Promise<Order[]> {
   const changed: Order[] = [];
   for (const o of working) {
     let st: Awaited<ReturnType<typeof getOrderStatus>>;
-    try { st = await getOrderStatus(o.exchangeOrderId!, o.venue ?? venueOf({ id: o.marketId, source: "gemini" })); } catch { continue; }
+    try { st = await getOrderStatus(o.exchangeOrderId!, o.venue ?? venueOf({ id: o.marketId, source: "gemini" }), o.userId); } catch { continue; }
     if (!st) continue;
     const updated = await tx((db) => {
       const cur = db.orders.find((x) => x.id === o.id) as TrackedOrder | undefined;

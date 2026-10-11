@@ -15,8 +15,9 @@ const LIVE_OPT_IN = process.env.HYPERLIQUID_LIVE_TRADING === "1";
 // Address whose balance/orders we read; an API (agent) wallet key signs for this master account.
 const ACCOUNT_ADDRESS = process.env.HYPERLIQUID_ACCOUNT_ADDRESS as Hex | undefined;
 // On testnet, also list mainnet outcomes (public data) as paper-only, mirroring GEMINI_DISCOVERY_INCLUDE_PRODUCTION.
-const INCLUDE_MAINNET = NETWORK === "testnet" && process.env.HYPERLIQUID_DISCOVERY_INCLUDE_MAINNET === "1";
-const MAX_OUTCOMES = Number(process.env.HYPERLIQUID_MAX_OUTCOMES || 40);
+// On by default: mainnet has the real sports/macro catalog; on testnet those trade as paper against test money.
+const INCLUDE_MAINNET = NETWORK === "testnet" && process.env.HYPERLIQUID_DISCOVERY_INCLUDE_MAINNET !== "0";
+const MAX_OUTCOMES = Number(process.env.HYPERLIQUID_MAX_OUTCOMES || 2000);
 
 export const hyperliquidEnabled = process.env.HYPERLIQUID_ENABLED !== "0";
 export const hyperliquidMode: "testnet" | "live" | "simulated" =
@@ -50,7 +51,7 @@ const makeId = (net: "testnet" | "mainnet", outcome: number) => `${HL_PREFIX}${n
  * The description format is not formally documented, so a missing expiry just means "unknown".
  */
 function expiryFrom(desc: string): string | undefined {
-  const m = desc.match(/expiry[:=]\s*(\d{4})(\d{2})(\d{2})(?:[-T ]?(\d{2})(\d{2}))?/i);
+  const m = desc.match(/(?:expiry|time|resolutionDeadline|decisionDeadline|dateTime|listingDeadline)[:=]\s*(\d{4})(\d{2})(\d{2})(?:[-T ]?(\d{2})(\d{2}))?/i);
   if (!m) return undefined;
   const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0)));
   return isNaN(d.getTime()) ? undefined : d.toISOString();
@@ -68,46 +69,98 @@ async function book(net: "testnet" | "mainnet", enc: number): Promise<Book> {
 
 type Meta = Awaited<ReturnType<InfoClient["outcomeMeta"]>>;
 
+/** "k:v|k:v" template descriptions -> object. */
+function kv(desc?: string): Record<string, string> {
+  const o: Record<string, string> = {};
+  for (const part of (desc ?? "").split("|")) {
+    const i = part.indexOf(":");
+    if (i > 0) o[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  }
+  return o;
+}
+const when = (t?: string) => {
+  const m = t?.match(/^(\d{4})(\d{2})(\d{2})(?:-(\d{2})(\d{2}))?/);
+  if (!m) return "";
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +(m[4] ?? 0), +(m[5] ?? 0)));
+  return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" }) + " ET";
+};
+const asset = (a: Record<string, string>) => (a.shortName || a.perp || a.underlying || a.instrument || "").replace(/^xyz:/, "");
+const words = (t: string) => t.replace(/^template:?\s*/i, "").replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+
+/** Plain-English question for a HIP-4 outcome (titles are what the agent searches). */
+function humanize(oName: string, oDesc: string, qName?: string, qDesc?: string): { event: string; title: string; category?: string } {
+  const a = kv(oDesc), q = kv(qDesc);
+  // Template names may carry a version suffix ("sportsContestWinner7").
+  const t = oName.replace(/^template:/, "").replace(/\d+$/, ""), qt = (qName ?? "").replace(/^template:/, "").replace(/\d+$/, "");
+  const vs = a.participantA && a.participantB ? `${a.participantA} vs ${a.participantB}` : "";
+  const qEvent =
+    qt === "sportsTournamentWinner" ? `${q.competition ?? "Tournament"} ${q.season ?? ""} winner`.trim()
+    : qt === "awardWinner" ? `${q.award ?? "Award"} ${q.period ?? ""} winner`.trim()
+    : qt === "policyRateDecision" ? `${q.institution ?? "Central bank"} rate decision (${q.decisionLabel ?? when(q.decisionDeadline)})`
+    : qt === "sportsContestResult" ? `${q.competition ?? "Match"}: ${q.participantA ?? ""} vs ${q.participantB ?? ""}`.trim()
+    : qName && !qName.startsWith("template") ? qName : words(qt || t);
+  switch (t) {
+    case "binaryPrice": case "binaryPriceExternal":
+      return { event: `${asset(a)} price`, title: `${asset(a)} above ${a.threshold} at ${when(a.time)}?`, category: "Markets" };
+    case "priceTouch":
+      return { event: `${asset(a)} price`, title: `${asset(a)} touches ${a.target} by ${when(a.time)}?`, category: "Markets" };
+    case "Recurring":
+      return { event: `${a.underlying} price`, title: `${a.underlying} above ${a.targetPrice} at ${when(a.expiry)}?`, category: "Crypto" };
+    case "sportsContestWinner":
+      return { event: vs, title: `${a.competition ? a.competition + ": " : ""}${a.participantA} beat ${a.participantB}?`, category: "Sports" };
+    case "sportsTotal":
+      return { event: vs, title: `${vs}: total ${a.measure ?? "points"} over ${a.line}?`, category: "Sports" };
+    case "sportsSpread":
+      return { event: vs, title: `${vs}: ${a.participantA} covers ${a.line ?? "the spread"}?`, category: "Sports" };
+    case "sportsContestParticipant2": case "sportsTournamentParticipant": case "awardCandidate":
+      return { event: qEvent, title: `${a.participant ?? a.candidate} — ${qEvent}?`, category: t.startsWith("award") ? "Awards" : "Sports" };
+    case "sportsContestDraw2":
+      return { event: qEvent, title: `${qEvent}: draw?`, category: "Sports" };
+    case "policyRateDecrease": case "policyRateIncrease": case "policyRateNoChange":
+      return { event: qEvent, title: `${qEvent}: ${t === "policyRateDecrease" ? "cut" : t === "policyRateIncrease" ? "hike" : "hold"}?`, category: "Economy" };
+    case "companyIpoConfirmed":
+      return { event: `${a.company} IPO`, title: `${a.company} IPO by ${when(a.dateTime)}?`, category: "Tech" };
+    case "companyIpoFirstDayMarketCap":
+      return { event: `${a.company} IPO`, title: `${a.company} first-day market cap ≥ $${a.marketCapThresholdB}B?`, category: "Tech" };
+  }
+  // Unknown template: question + outcome name only (descriptions can be long prose rules).
+  const outcome = oName.startsWith("template") ? words(t) : oName;
+  return { event: qEvent, title: `${qEvent}${outcome && outcome !== qEvent ? ` — ${outcome}` : ""}`.slice(0, 140) };
+}
+
 async function mapOutcomes(net: "testnet" | "mainnet", meta: Meta, paperOnly: boolean): Promise<Market[]> {
   const questionOf = new Map<number, Meta["questions"][number]>();
   for (const q of meta.questions ?? []) for (const o of [...q.namedOutcomes, q.fallbackOutcome]) questionOf.set(o, q);
   const settled = new Set((meta.questions ?? []).flatMap((q) => q.settledNamedOutcomes));
+  const fallbacks = new Set((meta.questions ?? []).map((q) => q.fallbackOutcome));
   const cutoff = Date.now() + MIN_TIME_TO_EXPIRY_MS;
+  // One call prices every outcome token ("#<10*outcome+side>"); exact books are fetched per market on demand.
+  const mids = (await info[net].allMids().catch(() => ({}))) as Record<string, string>;
 
-  const candidates = (meta.outcomes ?? [])
-    .filter((o) => !settled.has(o.outcome))
-    .map((o) => ({ o, expiresAt: expiryFrom(o.description ?? "") ?? expiryFrom(questionOf.get(o.outcome)?.description ?? "") }))
-    .filter((x) => !x.expiresAt || Date.parse(x.expiresAt) >= cutoff)
-    .slice(0, MAX_OUTCOMES);
-
-  // Two books per outcome (YES and NO are separate tokens); fetched in small batches to respect rate limits.
   const out: Market[] = [];
-  for (let i = 0; i < candidates.length; i += 10) {
-    const batch = candidates.slice(i, i + 10);
-    const books = await Promise.all(batch.map(({ o }) => Promise.all([book(net, 10 * o.outcome), book(net, 10 * o.outcome + 1)])));
-    batch.forEach(({ o, expiresAt }, j) => {
-      const [yes, no] = books[j];
-      if (yes.bid === undefined && yes.ask === undefined && no.bid === undefined && no.ask === undefined) return; // no quotes
-      const q = questionOf.get(o.outcome);
-      const eventTitle = q?.name ?? o.name;
-      out.push({
-        id: makeId(net, o.outcome),
-        eventId: q ? `hl-${net[0]}-q${q.question}` : undefined,
-        eventTitle,
-        title: q ? `${q.name} — ${o.name}` : o.name,
-        category: (o.description ?? "").match(/underlying[:=]\s*([A-Za-z0-9]+)/i)?.[1] ? "Crypto" : undefined,
-        rules: [o.description, q?.description].filter(Boolean).join(" ") || undefined,
-        expiresAt,
-        status: "open",
-        // Prefer each side's own book; fill gaps from the complementary side.
-        yesBid: yes.bid ?? (no.ask !== undefined ? +(1 - no.ask).toFixed(4) : undefined),
-        yesAsk: yes.ask ?? (no.bid !== undefined ? +(1 - no.bid).toFixed(4) : undefined),
-        noBid: no.bid ?? (yes.ask !== undefined ? +(1 - yes.ask).toFixed(4) : undefined),
-        noAsk: no.ask ?? (yes.bid !== undefined ? +(1 - yes.bid).toFixed(4) : undefined),
-        source: "hyperliquid",
-        hyperliquid: { network: net, outcome: o.outcome, quoteToken: o.quoteToken },
-        ...(paperOnly ? { paperOnly: true } : {}),
-      });
+  for (const o of (meta.outcomes ?? []).slice(0, MAX_OUTCOMES)) {
+    if (settled.has(o.outcome) || fallbacks.has(o.outcome) || /fallback|smoke/i.test(`${o.name} ${o.description}`)) continue;
+    const q = questionOf.get(o.outcome);
+    const expiresAt = expiryFrom(o.description ?? "") ?? expiryFrom(q?.description ?? "");
+    if (expiresAt && Date.parse(expiresAt) < cutoff) continue;
+    const y = num(mids[`#${10 * o.outcome}`]), n = num(mids[`#${10 * o.outcome + 1}`]);
+    const yes = y ?? (n !== undefined ? 1 - n : undefined);
+    if (yes === undefined || yes <= 0 || yes >= 1) continue; // unpriced or already decided
+    const h = humanize(o.name, o.description ?? "", q?.name, q?.description);
+    out.push({
+      id: makeId(net, o.outcome),
+      eventId: q ? `hl-${net[0]}-q${q.question}` : undefined,
+      eventTitle: h.event,
+      title: h.title,
+      category: h.category,
+      rules: [o.description, q?.description].filter(Boolean).join(" ") || undefined,
+      expiresAt,
+      status: "open",
+      yesBid: +yes.toFixed(4), yesAsk: +yes.toFixed(4),
+      noBid: +(1 - yes).toFixed(4), noAsk: +(1 - yes).toFixed(4),
+      source: "hyperliquid",
+      hyperliquid: { network: net, outcome: o.outcome, quoteToken: o.quoteToken },
+      ...(paperOnly ? { paperOnly: true } : {}),
     });
   }
   return out;
@@ -131,6 +184,18 @@ export async function listHyperliquidMarkets(): Promise<Market[]> {
 /** One outcome by id, including settled ones (status "settled", lastPrice = YES settlement value). */
 export async function getHyperliquidMarket(id: string): Promise<Market | undefined> {
   const listed = listCache?.markets.find((m) => m.id === id);
+  if (listed?.hyperliquid) {
+    // Listing prices are mids; use the real book for anything we size or fill against.
+    const enc = 10 * listed.hyperliquid.outcome;
+    const [yes, no] = await Promise.all([book(listed.hyperliquid.network, enc), book(listed.hyperliquid.network, enc + 1)]);
+    return {
+      ...listed,
+      yesBid: yes.bid ?? (no.ask !== undefined ? +(1 - no.ask).toFixed(4) : listed.yesBid),
+      yesAsk: yes.ask ?? (no.bid !== undefined ? +(1 - no.bid).toFixed(4) : listed.yesAsk),
+      noBid: no.bid ?? (yes.ask !== undefined ? +(1 - yes.ask).toFixed(4) : listed.noBid),
+      noAsk: no.ask ?? (yes.bid !== undefined ? +(1 - yes.bid).toFixed(4) : listed.noAsk),
+    };
+  }
   if (listed) return listed;
   const p = parseId(id);
   if (!p) return undefined;
