@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const messages = load().messages.filter((m) => m.userId === DEMO_USER_ID).slice(-100);
+  const messages = load().messages.filter((m) => m.userId === DEMO_USER_ID && !m.groupId).slice(-100);
   return NextResponse.json({ messages });
 }
 

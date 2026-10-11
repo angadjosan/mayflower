@@ -7,7 +7,13 @@ const PASSWORD = process.env.BLUEBUBBLES_PASSWORD;
 export const bbEnabled = Boolean(URL_ && PASSWORD);
 
 export async function sendIMessage(handle: string, text: string): Promise<boolean> {
-  if (!bbEnabled || !handle) return false;
+  if (!handle) return false;
+  return sendToChat(`iMessage;-;${handle}`, text);
+}
+
+/** Send to any chat guid — a 1:1 chat ("iMessage;-;<handle>") or a group ("iMessage;+;chat…"). */
+export async function sendToChat(chatGuid: string, text: string): Promise<boolean> {
+  if (!bbEnabled || !chatGuid) return false;
   try {
     const res = await fetch(
       `${URL_}/api/v1/message/text?password=${encodeURIComponent(PASSWORD!)}`,
@@ -15,7 +21,7 @@ export async function sendIMessage(handle: string, text: string): Promise<boolea
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          chatGuid: `iMessage;-;${handle}`,
+          chatGuid,
           message: text,
           method: "apple-script",
           tempGuid: `temp-${crypto.randomUUID()}`,

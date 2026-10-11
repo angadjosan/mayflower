@@ -7,6 +7,7 @@ const DISCOVERY: Record<ProposalView["discovery"], { label: string; tone: "accen
   personalized: { label: "For you", tone: "accent" },
   general: { label: "General", tone: "neutral" },
   monitor: { label: "Monitor", tone: "warn" },
+  group: { label: "Group chat", tone: "accent" },
 };
 
 function ProposalCard({ p, onAsk, onReject }: { p: ProposalView; onAsk: (p: ProposalView) => void; onReject: (p: ProposalView) => void }) {

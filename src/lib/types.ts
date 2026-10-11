@@ -80,7 +80,9 @@ export interface TradeProposal {
   market: Market; // snapshot at proposal time
   researchId: string;
   kind: "open" | "close" | "reduce";
-  discovery: "personalized" | "general" | "monitor";
+  discovery: "personalized" | "general" | "monitor" | "group";
+  groupId?: string; // set for group-chat trades (contest entry or group pick)
+  contestId?: string;
   side: Side;
   quantity: number; // contracts
   limitPrice: number; // 0..1 per contract
@@ -142,6 +144,7 @@ export interface ChatMessage {
   role: "user" | "agent";
   text: string;
   channel: "imessage" | "web";
+  groupId?: string; // set when the message was posted in a group chat (userId = sender)
   createdAt: string;
 }
 
@@ -170,4 +173,52 @@ export interface PortfolioSnapshot {
   userId: string;
   at: string;
   valueUsd: number;
+}
+
+// ---------- Group chats ----------
+
+export interface Group {
+  id: string;
+  chatGuid: string; // BlueBubbles chat guid, e.g. "iMessage;+;chat123"
+  memberUserIds: string[];
+  createdAt: string;
+  msgsSinceSuggestion: number; // always-listening throttle
+  lastSuggestionAt?: string;
+}
+
+/** Friends each pitch a trade with an equal stake; best % return wins the group-defined reward. */
+export interface Contest {
+  id: string;
+  groupId: string;
+  stakeUsd: number; // equal stake per member
+  reward: string; // free-text IOU, e.g. "loser buys dinner" — Mayflower never holds the pot
+  endsAt?: string; // optional; positions stay open after the contest is scored
+  status: "active" | "ended";
+  winnerUserId?: string;
+  createdByUserId: string;
+  createdAt: string;
+}
+
+export interface ContestEntry {
+  id: string;
+  contestId: string;
+  userId: string;
+  pitch: string; // the member's idea in their own words
+  proposalId: string;
+  createdAt: string;
+}
+
+/** One market the agent suggested to the whole group; each member opts in with their own trade. */
+export interface GroupPick {
+  id: string;
+  groupId: string;
+  market: Market;
+  researchId: string;
+  side: Side;
+  price: number;
+  stakeUsd: number;
+  rationale: string;
+  joinedUserIds: string[];
+  createdAt: string;
+  expiresAt: string;
 }

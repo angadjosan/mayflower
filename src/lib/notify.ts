@@ -7,8 +7,9 @@ export function storeMessage(
   role: ChatMessage["role"],
   text: string,
   channel: ChatMessage["channel"],
+  groupId?: string,
 ): ChatMessage {
-  const m: ChatMessage = { id: id("msg_"), userId, role, text, channel, createdAt: now() };
+  const m: ChatMessage = { id: id("msg_"), userId, role, text, channel, createdAt: now(), ...(groupId ? { groupId } : {}) };
   tx((db) => { db.messages.push(m); });
   return m;
 }

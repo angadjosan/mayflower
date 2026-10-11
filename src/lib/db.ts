@@ -5,6 +5,7 @@ import crypto from "crypto";
 import type {
   User, UserThesis, Market, ResearchReport, TradeProposal, Order, Position,
   ChatMessage, MonitorEvent, AuditEvent, PortfolioSnapshot,
+  Group, Contest, ContestEntry, GroupPick,
 } from "./types";
 
 export interface DB {
@@ -19,12 +20,17 @@ export interface DB {
   monitorEvents: MonitorEvent[];
   audit: AuditEvent[];
   snapshots: PortfolioSnapshot[];
+  groups: Group[];
+  contests: Contest[];
+  contestEntries: ContestEntry[];
+  groupPicks: GroupPick[];
 }
 
 const FILE = path.join(process.cwd(), ".data", "db.json");
 const empty = (): DB => ({
   users: [], theses: [], markets: [], research: [], proposals: [], orders: [],
   positions: [], messages: [], monitorEvents: [], audit: [], snapshots: [],
+  groups: [], contests: [], contestEntries: [], groupPicks: [],
 });
 
 export function load(): DB {

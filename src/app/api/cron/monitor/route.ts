@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { reconcileOrders } from "@/lib/execution";
 import { runMonitor } from "@/lib/monitor";
+import { finalizeDueContests } from "@/lib/agent/group";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +13,8 @@ async function handler(req: Request) {
   }
   const orders = await reconcileOrders();
   const events = await runMonitor();
-  return NextResponse.json({ reconciled: orders.length, events });
+  const contestsScored = await finalizeDueContests();
+  return NextResponse.json({ reconciled: orders.length, events, contestsScored });
 }
 
 export const GET = handler;
