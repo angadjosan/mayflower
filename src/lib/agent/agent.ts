@@ -16,7 +16,7 @@ import { remember, forget, memoryContext } from "../memory";
 import { revokeUploadToken, deleteLocalTexts } from "../ingest";
 import { pendingCheckins, markCheckinAnswered } from "../loops/newsCheckin";
 import type { Market, OnboardingState, ResearchReport, Side, TradeProposal, User } from "../types";
-import { callsEnabled, callUrl, claimCall, ringUser } from "../calls";
+import { callsEnabled, callUrl, claimCall, releaseCall, ringUser } from "../calls";
 import { notionInternal, notionInternalConnection, saveConnection, syncSource } from "../connectors";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
@@ -322,6 +322,7 @@ async function runTool(userId: string, name: string, input: Input): Promise<unkn
       if (!callsEnabled()) return { error: "calls aren't set up on this server" };
       if (!(await claimCall(userId))) return { ok: false, note: "we just called or texted them a call link in the last few minutes" };
       if (await ringUser(userId)) return { ok: true, ringing: true, note: "their phone is ringing now; say you're calling" };
+      await releaseCall(userId, (await load()).users.find((u) => u.id === userId)?.lastCallAt ?? "");
       // Send the link ourselves: models drop URLs from replies.
       await sendToUser(userId, `tap to talk: ${callUrl(userId)}`);
       return { ok: true, ringing: false, note: "we can't ring this number, so we already texted them a tap-to-talk link; just say it's there" };
