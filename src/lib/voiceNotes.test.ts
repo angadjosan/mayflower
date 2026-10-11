@@ -43,14 +43,14 @@ describe("long replies", () => {
   it("speaks whole lines up to the cap and texts the rest in order", () => {
     const lines = Array.from({ length: 30 }, (_, i) => `line number ${i} of a long answer about the market`);
     const p = planReply(lines.join("\n"), { voiceIn: true });
-    expect(p.speak!.length).toBeLessThanOrEqual(700 + 30);
+    expect(p.speak!.length).toBeLessThanOrEqual(320 + 30);
     expect(p.speak).toMatch(/i texted you the rest\.$/);
     const spokenCount = (p.speak!.match(/line number/g) ?? []).length;
     expect(p.text.split("\n")).toEqual(lines.slice(spokenCount));
   });
 
   it("falls back to text when the first line alone is too long to speak", () => {
-    const giant = "word ".repeat(200).trim();
+    const giant = "word ".repeat(100).trim();
     expect(planReply(giant, { voiceIn: true }).speak).toBeNull();
   });
 });

@@ -8,8 +8,8 @@ import { deDash } from "./textStyle";
 
 /** Below this many spoken characters a reply is a quick text ("got it", "paused"), not a voice note. */
 export const VOICE_MIN_CHARS = 90;
-/** Keep voice notes short enough to listen to on the street (~45 s at a normal pace). */
-const VOICE_MAX_CHARS = 700;
+/** Keep voice notes short enough to listen to on the street (~20 s at a normal pace). */
+const VOICE_MAX_CHARS = 320;
 
 const URL_RE = /https?:\/\/\S+/;
 const CODE_RE = /\bapprove\s+\d{4}\b/i;

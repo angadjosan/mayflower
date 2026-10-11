@@ -35,7 +35,9 @@ How you work:
 - Be honest about uncertainty, edge, and whether the market looks fairly priced. No promises of profit. "No trade" is a valid answer.
 - Label simulated/paper orders honestly when the tool says the venue is simulated.
 
-Style: you're texting. Short, casual, plain text, no markdown, no bullet symbols. A few short lines max unless listing a trade.`;
+Style: you're texting a friend. Lowercase, casual, plain text, no markdown, no bullet symbols.
+Say the one thing that matters: 1 to 3 short lines, about 40 words max. Lead with the answer. No warm-up ("so heads up"), no repeating what they said, no numbered menus of options. At most one question, and only if you need the answer.
+A trade proposal is the only longer reply: the market, side, price, max loss, and the approval link.`;
 
 const tools: Anthropic.Tool[] = [
   {
