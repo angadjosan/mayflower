@@ -26,3 +26,34 @@
 - **Group pick:** "Mayflower what should we bet on?" reads the last ~50 group messages, maps them to one live market, and members reply "in" to get their own trade.
 - **Always listening:** every message is stored; after 12+ messages and 30+ min since the last suggestion, Claude checks whether the chat contains a strong tradeable opinion and only then posts. Without an LLM key it never interrupts.
 - Approval links are only ever sent by DM — anyone holding a link can approve that order.
+
+## Personal context connectors (`src/lib/connectors/*`)
+Optional, opt-in, and revocable. Whatever Mayflower learns is **context for ideas, never permission to trade**. Raw text goes only to the Claude extraction call. We store short excerpts (200 chars max) plus the derived theses (`source` = provider, `sourceId` = the ConnectedSource), and the user can see all of it in the "Connected context" card. Disconnecting deletes the token, marks the source `revoked`, removes every thesis and excerpt derived from it, and makes a best-effort revoke call to Google or Slack.
+
+- **Tokens:** encrypted at rest with AES-256-GCM (`src/lib/crypto.ts`). Set `MAYFLOWER_ENCRYPTION_KEY` to 32 random bytes encoded as base64 or hex: `openssl rand -base64 32`. In dev, if it's unset, the key is derived from `SESSION_SECRET` and a warning is logged. In production it is required. Rotating the key makes existing tokens unreadable, so users have to reconnect.
+- **Redirect URI** for every provider: `${APP_URL}/api/connect/<provider>/callback`. For local dev that's `http://localhost:3000/api/connect/notion/callback`, and the same pattern for `slack` and `gmail`. It must match the registered value exactly.
+- **OAuth state:** `${userId}.${provider}.${timestamp}` is HMAC-signed with `SESSION_SECRET` and expires after 15 minutes. The callback also requires the signed-in user to match.
+- **Routes:** `GET /api/connect/<provider>/start`, `GET /api/connect/<provider>/callback`, `POST /api/connect/<provider>/sync`, `DELETE /api/connect/source/<id>`, and `GET /api/connect`, which lists sources with what was learned and never returns tokens.
+- **Sync:** fetches up to 20 recent items of about 2k chars each. Claude extracts durable interests and opinions about real-world outcomes and ignores personal or private matters; content is treated as untrusted data. Without an LLM key, sync falls back to counting `KNOWN_TOPICS` keywords. Inferred confidence is capped at 0.8. A thesis the user stated directly (chat, iMessage, manual) is never overwritten. `syncAll()` is the cron entry point.
+
+### Notion
+Two modes are supported:
+1. **Internal integration (simplest, single workspace):** go to https://www.notion.so/profile/integrations, choose New integration, pick type *Internal*, and grant the *Read content* capability only. Copy the secret into `NOTION_TOKEN`. In Notion, share the pages you want Mayflower to see with the integration (page menu, then Connections, then add it). "Connect" then stores this token for the current user and skips OAuth. Use this mode only for personal or demo deployments, because every user would share the same token.
+2. **Public integration (OAuth):** on the same page, create an integration of type *Public*. Set the Redirect URI to `${APP_URL}/api/connect/notion/callback`, grant *Read content* only, and fill in the required company, website, and privacy policy fields. Put the OAuth client ID and secret in `NOTION_CLIENT_ID` and `NOTION_CLIENT_SECRET`. During authorization the user picks which pages to share. If both modes are configured, OAuth wins.
+- API: `POST /v1/search` returns the pages edited most recently, and `GET /v1/blocks/{id}/children` returns their top-level text. Both use `Notion-Version: 2022-06-28`. Notion has no revoke call here, so users can also remove access under Settings, then Connections.
+
+### Slack
+1. Go to https://api.slack.com/apps and choose Create New App, then From scratch.
+2. Under OAuth & Permissions, add the Redirect URL `${APP_URL}/api/connect/slack/callback`. Slack requires HTTPS for redirect URLs, so use a tunnel such as ngrok for local dev and set `APP_URL` to it.
+3. Under **User Token Scopes** (not Bot), add `channels:history`, `groups:history`, `channels:read`, `groups:read`, `search:read`, and `users:read`.
+4. Copy the Client ID and Client Secret from Basic Information into `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET`.
+- API: `search.messages` with `query=from:me` fetches only the user's own messages. If that fails, it falls back to `users.conversations` plus `conversations.history` for up to 5 channels, filtered to the user. Disconnecting calls `auth.revoke`.
+- **Distribution:** an unlisted app can be installed by your own workspace right away. To let other workspaces install it, turn on *Manage Distribution*. Listing it in the Slack Marketplace requires Slack's review, and `search:read` gets extra scrutiny.
+
+### Gmail
+1. In Google Cloud Console (https://console.cloud.google.com), create a project or pick an existing one, then enable the **Gmail API** under APIs & Services, then Library.
+2. Configure the OAuth consent screen (Google Auth Platform): user type *External*, then add the scopes `.../auth/gmail.readonly`, `openid`, and `email`.
+3. Under Credentials, choose Create OAuth client ID, type *Web application*. Add the Authorized redirect URI `${APP_URL}/api/connect/gmail/callback`, then copy the values into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+- `gmail.readonly` is a **restricted scope**. While the app's publishing status is *Testing*, only listed test users can connect, with a limit of 100, and their refresh tokens expire after 7 days. Production use requires Google's verification plus an annual third-party security assessment (CASA), so plan on Testing mode for the MVP.
+- The auth request uses `access_type=offline&prompt=consent`, so it returns a refresh token. Access tokens are refreshed automatically when they expire, and the refreshed token is re-encrypted.
+- API: `users.messages.list?q=newer_than:14d -category:social&maxResults=20`, then `messages.get?format=metadata` (Subject and From headers). Only the **subject and snippet** are used; full message bodies are never fetched. Disconnecting calls Google's token revoke endpoint.
