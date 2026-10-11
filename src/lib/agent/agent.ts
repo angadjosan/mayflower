@@ -13,6 +13,7 @@ import { getBalance } from "../exchange";
 import { ensureTestWallet } from "../testWallet";
 import { researchAndForecast, discover, formatProposal } from "./discover";
 import { remember, forget, memoryContext } from "../memory";
+import { revokeUploadToken, deleteLocalTexts } from "../ingest";
 import { pendingCheckins, markCheckinAnswered } from "../loops/newsCheckin";
 import type { Market, OnboardingState, ResearchReport, Side, TradeProposal, User } from "../types";
 
@@ -116,10 +117,10 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "forget",
-    description: "Delete memories the user asked you to forget (ids from your memory context).",
+    description: "Delete memories the user asked you to forget (ids from your memory context). localTexts: true revokes the Mac local-texts upload token and deletes everything it uploaded.",
     input_schema: {
       type: "object",
-      properties: { memoryId: { type: "string" }, memoryIds: { type: "array", items: { type: "string" } } },
+      properties: { memoryId: { type: "string" }, memoryIds: { type: "array", items: { type: "string" } }, localTexts: { type: "boolean" } },
     },
   },
   {
@@ -258,7 +259,12 @@ async function runTool(userId: string, name: string, input: Input): Promise<unkn
 
     case "forget": {
       const ids = [...(Array.isArray(input.memoryIds) ? input.memoryIds : []), input.memoryId].filter((x): x is string => typeof x === "string");
-      const removed = await forget(userId, ids);
+      const removed = ids.length ? await forget(userId, ids) : [];
+      if (input.localTexts === true) {
+        await revokeUploadToken(userId);
+        await deleteLocalTexts(userId);
+        return { ok: true, removed: removed.length, localTexts: "token revoked and uploaded items deleted" };
+      }
       return { ok: removed.length > 0, removed: removed.length };
     }
 

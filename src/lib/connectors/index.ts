@@ -301,6 +301,7 @@ export async function disconnect(sourceId: string): Promise<boolean> {
     const th = db.theses.length, ci = db.contextItems.length;
     db.theses = db.theses.filter((t) => t.sourceId !== sourceId);
     db.contextItems = db.contextItems.filter((c) => c.sourceId !== sourceId);
+    db.memories = (db.memories ?? []).filter((m) => m.sourceId !== sourceId);
     return { theses: th - db.theses.length, items: ci - db.contextItems.length };
   });
   await audit({ userId: src.userId, actor: "user", action: "connector.disconnect", ref: sourceId, detail: { provider: src.provider, removed } });
