@@ -8,6 +8,7 @@ import { listMarkets, getMarket, venueLabel, venueOf, orderModeFor } from "../ex
 import { approvalUrl } from "../execution";
 import { getPortfolioSummary } from "../risk";
 import { sendToUser } from "../notify";
+import { createLoginLink } from "../auth";
 import { researchAndForecast, discover, formatProposal } from "./discover";
 import type { Market, ResearchReport, Side, TradeProposal, User } from "../types";
 
@@ -34,6 +35,7 @@ How you work:
 - The risk engine enforces the user's limits. If a requested amount exceeds them, say what the limit is and offer to raise it. Only raise limits with update_profile when the user explicitly asks.
 - Be honest about uncertainty, edge, and whether the market looks fairly priced. No promises of profit. "No trade" is a valid answer.
 - Label simulated/paper orders honestly when the tool says the venue is simulated.
+- If they want trades on their own Gemini account, send a connect_gemini link (get_link). Mayflower never holds funds and can't withdraw.
 
 Style: you're texting. Short, casual, plain text, no markdown, no bullet symbols. A few short lines max unless listing a trade.`;
 
@@ -98,6 +100,11 @@ const tools: Anthropic.Tool[] = [
     name: "get_portfolio",
     description: "User's balance/limits, P&L, open positions and pending proposals (with approval links).",
     input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_link",
+    description: "One-time, 15-minute sign-in link. 'dashboard' opens their dashboard; 'connect_gemini' links their own Gemini account via OAuth (trade-only scopes, Mayflower can never withdraw). Include the link verbatim.",
+    input_schema: { type: "object", properties: { purpose: { type: "string", enum: ["dashboard", "connect_gemini"] } }, required: ["purpose"] },
   },
   {
     name: "reject_proposal",
@@ -208,6 +215,11 @@ async function runTool(userId: string, name: string, input: Input): Promise<unkn
           id: p.id, market: label(p.market), side: p.side, costUsd: p.costUsd, approvalUrl: approvalUrl(p),
         })),
       };
+    }
+
+    case "get_link": {
+      const next = input.purpose === "connect_gemini" ? "/api/gemini-oauth/start" : undefined;
+      return { url: await createLoginLink(userId, next), expiresInMinutes: 15 };
     }
 
     case "reject_proposal": {

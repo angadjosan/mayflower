@@ -173,7 +173,7 @@ export async function approveAndExecute(
   let result: Awaited<ReturnType<typeof placeOrder>>;
   try {
     result = await placeOrder({
-      marketId: p.marketId, side: p.side, action, quantity: p.quantity, limitPrice: p.limitPrice, clientOrderId: p.id,
+      marketId: p.marketId, side: p.side, action, quantity: p.quantity, limitPrice: p.limitPrice, clientOrderId: p.id, userId: p.userId,
     });
   } catch (e) {
     result = { status: "error", filledQuantity: 0, mode: "simulated", venue: venueOf(p.market), error: e instanceof Error ? e.message : String(e) };
@@ -222,7 +222,7 @@ export async function reconcileOrders(userId?: string): Promise<Order[]> {
   const changed: Order[] = [];
   for (const o of working) {
     let st: Awaited<ReturnType<typeof getOrderStatus>>;
-    try { st = await getOrderStatus(o.exchangeOrderId!, o.venue ?? venueOf({ id: o.marketId, source: "gemini" })); } catch { continue; }
+    try { st = await getOrderStatus(o.exchangeOrderId!, o.venue ?? venueOf({ id: o.marketId, source: "gemini" }), o.userId); } catch { continue; }
     if (!st) continue;
     const updated = await tx((db) => {
       const cur = db.orders.find((x) => x.id === o.id) as TrackedOrder | undefined;
