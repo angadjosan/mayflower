@@ -4,6 +4,7 @@ import { tx, load, id, now, audit, type DB } from "./db";
 import type { Order, Position, TradeProposal } from "./types";
 import { placeOrder, getOrderStatus } from "./exchange";
 import { sendToUser } from "./notify";
+import { exitLevels } from "./risk";
 
 const APP_URL = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
 
@@ -49,7 +50,18 @@ function applyFill(db: DB, order: TrackedOrder, qty: number, price: number) {
       pos.quantity = newQty;
       pos.costBasisUsd += price * qty;
       pos.updatedAt = t;
+      if (pos.stopPrice != null) {
+        // Re-anchor the exit watch to the new average entry.
+        const lv = exitLevels(pos.avgEntryPrice);
+        pos.stopPrice = lv.stopPrice;
+        pos.takeProfitPrice = lv.takeProfitPrice;
+        pos.watchConditions = lv.watchConditions;
+      }
     } else {
+      const isHedge = proposal?.kind === "hedge";
+      const hedged = isHedge ? db.positions.find((x) => x.id === proposal?.hedgeForPositionId) : undefined;
+      // Hedges get no stop/take-profit alerts: a hedge losing value usually means the main position is winning.
+      const lv = isHedge ? undefined : exitLevels(price);
       pos = {
         id: id("pos_"),
         userId: order.userId,
@@ -63,8 +75,14 @@ function applyFill(db: DB, order: TrackedOrder, qty: number, price: number) {
         realizedPnlUsd: 0,
         status: "open",
         proposalId: order.proposalId,
-        latestAssessment: proposal?.thesis,
-        watchConditions: proposal?.riskNotes,
+        latestAssessment: isHedge
+          ? `Hedge for position ${proposal?.hedgeForPositionId}${hedged ? ` (${hedged.side} on "${hedged.market.title}")` : ""}. ${proposal?.thesis ?? ""}`.trim()
+          : proposal?.thesis,
+        watchConditions: isHedge
+          ? `Partial hedge, not guaranteed. Review it together with the position it protects (${proposal?.hedgeForPositionId}); if you close that position, consider closing this too.`
+          : lv!.watchConditions,
+        stopPrice: lv?.stopPrice,
+        takeProfitPrice: lv?.takeProfitPrice,
         openedAt: t,
         updatedAt: t,
       } satisfies Position;
@@ -123,7 +141,9 @@ export async function approveAndExecute(
     if (!user) return { error: "User not found." };
     if (user.paused) return { error: "Trading is paused. Unpause in settings to approve orders." };
     if (db.orders.some((o) => o.proposalId === p.id)) return { error: "An order already exists for this proposal." };
-    if (p.kind === "open") {
+    if (p.kind === "open" || p.kind === "hedge") {
+      if (p.kind === "hedge" && !db.positions.some((x) => x.id === p.hedgeForPositionId && x.status === "open"))
+        return { error: "The position this hedge protects is no longer open." };
       if (p.costUsd > user.limits.maxPerTradeUsd + 1e-9)
         return { error: `Order cost ${usd(p.costUsd)} exceeds your per-trade limit ${usd(user.limits.maxPerTradeUsd)}.` };
       const risk = atRiskUsd(db, user.id);
@@ -146,7 +166,8 @@ export async function approveAndExecute(
   audit({ userId: p.userId, actor: "user", action: "approve", ref: p.id, detail: { side: p.side, quantity: p.quantity, limitPrice: p.limitPrice } });
   if (pre.firstLink) audit({ userId: p.userId, actor: "system", action: "gemini_linked", detail: { account: "Sandbox – shared account" } });
 
-  const action: Order["action"] = p.kind === "open" ? "buy" : "sell";
+  // "hedge" is a buy of the hedge market (its own position, linked via hedgeForPositionId).
+  const action: Order["action"] = p.kind === "open" || p.kind === "hedge" ? "buy" : "sell";
   let result: Awaited<ReturnType<typeof placeOrder>>;
   try {
     result = await placeOrder({
