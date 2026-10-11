@@ -3,6 +3,7 @@ import { NextResponse, after } from "next/server";
 import { getOrCreateUser } from "@/lib/db";
 import { storeMessage, sendToUser } from "@/lib/notify";
 import { handleMessage } from "@/lib/agent/chat";
+import { punchUp } from "@/lib/punchUp";
 import { handleGroupMessage } from "@/lib/agent/group";
 import { bbEnabled, downloadAttachment, isVoiceMemo, sendAttachment, type BBAttachment } from "@/lib/bluebubbles";
 import { ElevenLabsError, elevenEnabled, transcribe } from "@/lib/elevenlabs";
@@ -93,7 +94,7 @@ export async function POST(req: Request) {
     const startedAt = Date.now();
     let reply: string;
     try {
-      reply = await handleMessage(user.id, text, "imessage");
+      reply = await punchUp(await handleMessage(user.id, text, "imessage"));
     } catch (e) {
       console.error(e);
       reply = "ah something broke on my end\ngive me a sec and send that again";
