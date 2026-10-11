@@ -13,9 +13,11 @@ describe("textStyle", () => {
   it("sends one bubble per non-empty line and caps the count", () => {
     expect(toBubbles("On it 🔎\n\nScanning — now 🎉\n")).toEqual(["on it 🔎", "scanning, now"]);
     const many = Array.from({ length: 12 }, (_, i) => `line ${i}`).join("\n");
-    const b = toBubbles(many);
-    expect(b).toHaveLength(4);
-    expect(b[3]).toContain("line 11");
+    expect(toBubbles(many)).toEqual(["line 0", "line 1", "line 2"]);
+    // links always survive the cap, long lines get cut to one sentence
+    const withLink = `a\nb\nc\nd\napprove: https://x.app/A/1?t=Zz\n${"word ".repeat(40)}`;
+    expect(toBubbles(withLink)).toEqual(["a", "b", "c", "approve: https://x.app/A/1?t=Zz"]);
+    expect(toBubbles(`the market already has this at 80 percent so you are late. ${"more words ".repeat(20)}`)).toEqual(["the market already has this at 80 percent so you are late."]);
   });
 
   it("lowercases everything but links, and keeps at most one emoji", () => {
