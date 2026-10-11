@@ -7,7 +7,7 @@ import { handleGroupMessage } from "@/lib/agent/group";
 import { bbEnabled, downloadAttachment, isVoiceMemo, type BBAttachment } from "@/lib/bluebubbles";
 import { ElevenLabsError, elevenEnabled, transcribe } from "@/lib/elevenlabs";
 import { wantsVoice } from "@/lib/voiceNotes";
-import { callsEnabled, callUrl, ringUser, wantsCall } from "@/lib/calls";
+import { callsEnabled, callUrl, claimCall, ringUser, wantsCall } from "@/lib/calls";
 import { load } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -86,10 +86,11 @@ export async function POST(req: Request) {
     await storeMessage(user.id, "user", text, "imessage");
     // "call me": ring their phone, or text a link that opens a call in the browser.
     if (callsEnabled() && wantsCall(text)) {
+      if (!(await claimCall(user.id))) return sendToUser(user.id, "one sec, we just tried you");
       await sendToUser(user.id, (await ringUser(user.id)) ? "calling you now" : `tap to talk: ${callUrl(user.id)}`);
       return;
     }
-    const startedAt = new Date().toISOString();
+    const startedAt = Date.now();
     let reply: string;
     try {
       reply = await handleMessage(user.id, text, "imessage");
@@ -98,10 +99,14 @@ export async function POST(req: Request) {
       reply = "ah something broke on my end\ngive me a sec and send that again";
     }
     // A good bet (a new pending trade idea) gets a call; anything else is just a text.
-    const goodBet = callsEnabled() && (await load()).proposals.some((p) => p.userId === user.id && p.status === "pending" && p.createdAt >= startedAt);
-    if (goodBet) {
-      const rang = await ringUser(user.id);
-      await sendToUser(user.id, `${reply}\n${rang ? "this one looks good, calling you now" : `this one looks good. tap to talk it through: ${callUrl(user.id)}`}`);
+    const goodBet = callsEnabled()
+      ? (await load()).proposals
+          .filter((p) => p.userId === user.id && p.status === "pending" && Date.parse(p.createdAt) >= startedAt)
+          .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0]
+      : undefined;
+    if (goodBet && (await claimCall(user.id))) {
+      const rang = await ringUser(user.id, goodBet.id);
+      await sendToUser(user.id, `${reply}\n${rang ? "this one looks good, calling you now" : `this one looks good. tap to talk it through: ${callUrl(user.id, goodBet.id)}`}`);
       return;
     }
     await sendToUser(user.id, reply, { voiceIn, askedForVoice: wantsVoice(text) });

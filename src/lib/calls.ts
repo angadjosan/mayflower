@@ -1,17 +1,18 @@
 // Live voice calls with the ElevenLabs agent. With a Twilio number imported into ElevenLabs
 // (ELEVENLABS_PHONE_NUMBER_ID) we ring the user's phone; otherwise we text a signed link that opens a
 // browser call. Either way the call carries a token saying who they are, so the agent's tools use their account.
-import { load } from "./db";
+import { load, tx } from "./db";
 import { sign, verify } from "./session";
 import { normalizePhone } from "./voice";
 
 const APP_URL = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
-const TTL_MS = 2 * 60 * 60 * 1000;
+const TTL_MS = 30 * 60 * 1000;
+const COOLDOWN_MS = 2 * 60 * 1000;
 const FRESH_MS = 30 * 60 * 1000;
 
 export const callsEnabled = () => Boolean(process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_AGENT_ID && process.env.ELEVENLABS_TOOL_SECRET);
 
-/** `<userId>.<expiresMs>.<sig>`: good for two hours, can't be forged or pointed at another user. */
+/** `<userId>.<expiresMs>.<sig>`: good for 30 minutes, can't be forged or pointed at another user. */
 export function callToken(userId: string, now = Date.now()): string {
   const body = `${userId}.${now + TTL_MS}`;
   return `${body}.${sign(`call:${body}`)}`;
@@ -25,8 +26,18 @@ export function userIdFromCallToken(token?: string | null, now = Date.now()): st
   return userId;
 }
 
-export function callUrl(userId: string): string {
-  return `${APP_URL}/call/${callToken(userId)}`;
+export function callUrl(userId: string, proposalId?: string): string {
+  return `${APP_URL}/call/${callToken(userId)}${proposalId ? `?p=${encodeURIComponent(proposalId)}` : ""}`;
+}
+
+/** At most one call (or call link) per user every 2 minutes, claimed atomically so parallel texts can't double-ring. */
+export async function claimCall(userId: string, now = Date.now()): Promise<boolean> {
+  return tx((db) => {
+    const u = db.users.find((x) => x.id === userId);
+    if (!u || (u.lastCallAt && now - Date.parse(u.lastCallAt) < COOLDOWN_MS)) return false;
+    u.lastCallAt = new Date(now).toISOString();
+    return true;
+  });
 }
 
 /** The user wants to talk live ("call me", "can we hop on a call"). */
@@ -34,11 +45,11 @@ export function wantsCall(text: string): boolean {
   return /\b(call me|give me a call|can (we|you) (talk|call)|hop on a call|(phone|voice) call|let'?s talk)\b/i.test(text);
 }
 
-/** What the agent opens with: a fresh pending trade idea if there is one, else an open question. */
-export async function callContext(userId: string): Promise<{ greeting: string; opener: string }> {
-  const idea = (await load()).proposals
-    .filter((p) => p.userId === userId && p.status === "pending" && Date.now() - Date.parse(p.createdAt) < FRESH_MS)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+/** What the agent opens with: the given (or freshest) pending trade idea, else an open question. */
+export async function callContext(userId: string, proposalId?: string): Promise<{ greeting: string; opener: string }> {
+  const pending = (await load()).proposals.filter((p) => p.userId === userId && p.status === "pending");
+  const idea = (proposalId && pending.find((p) => p.id === proposalId))
+    || pending.filter((p) => Date.now() - Date.parse(p.createdAt) < FRESH_MS).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
   if (!idea) {
     return { greeting: "hey, it's mayflower. what's on your mind?", opener: "They asked to talk. Find out what they believe about an upcoming event and help them decide if it's worth betting on." };
   }
@@ -50,7 +61,7 @@ export async function callContext(userId: string): Promise<{ greeting: string; o
 }
 
 /** Ring the user through Twilio when we can; returns false when they need a link instead. */
-export async function ringUser(userId: string): Promise<boolean> {
+export async function ringUser(userId: string, proposalId?: string): Promise<boolean> {
   const phoneNumberId = process.env.ELEVENLABS_PHONE_NUMBER_ID;
   const user = (await load()).users.find((u) => u.id === userId);
   const to = normalizePhone(user?.handle);
@@ -63,7 +74,7 @@ export async function ringUser(userId: string): Promise<boolean> {
         agent_id: process.env.ELEVENLABS_AGENT_ID,
         agent_phone_number_id: phoneNumberId,
         to_number: to,
-        conversation_initiation_client_data: { dynamic_variables: { ...(await callContext(userId)), call_token: callToken(userId) } },
+        conversation_initiation_client_data: { dynamic_variables: { ...(await callContext(userId, proposalId)), call_token: callToken(userId) } },
       }),
       signal: AbortSignal.timeout(20_000),
     });

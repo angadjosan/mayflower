@@ -219,7 +219,7 @@ export function voiceAgentConfig() {
       ),
     ],
     notes: [
-      "Replace the header placeholder with your ELEVENLABS_TOOL_SECRET (use an ElevenLabs workspace secret).",
+      "scripts/voice-agent.mts fills the secret header from ELEVENLABS_TOOL_SECRET.",
       "Calls: the user dials the Twilio number, we ring them about a good trade idea (ELEVENLABS_PHONE_NUMBER_ID), or they tap a texted /call link. No always-on recording.",
     ],
   };

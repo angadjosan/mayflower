@@ -17,6 +17,7 @@ export interface User {
   createdAt: string;
   onboarded: boolean;
   paused: boolean; // kill switch: no orders while paused
+  lastCallAt?: string; // last time we rang or texted a call link (cooldown)
   limits: RiskLimits;
   geminiLinked: boolean; // MVP: shared sandbox account; true once user "links"
 }
