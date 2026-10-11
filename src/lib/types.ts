@@ -27,7 +27,8 @@ export interface UserThesis {
   topic: string; // e.g. "Seahawks", "AI infrastructure"
   belief: string; // e.g. "AI capex keeps growing"
   confidence: number; // 0..1
-  source: "chat" | "imessage" | "manual";
+  source: "chat" | "imessage" | "manual" | "notion" | "slack" | "gmail" | "discord";
+  sourceId?: string; // ConnectedSource that produced this thesis (so users can see and revoke it)
   updatedAt: string;
 }
 
@@ -79,7 +80,8 @@ export interface TradeProposal {
   marketId: string;
   market: Market; // snapshot at proposal time
   researchId: string;
-  kind: "open" | "close" | "reduce";
+  kind: "open" | "close" | "reduce" | "hedge";
+  hedgeForPositionId?: string; // set when kind === "hedge"
   discovery: "personalized" | "general" | "monitor" | "group";
   groupId?: string; // set for group-chat trades (contest entry or group pick)
   contestId?: string;
@@ -134,6 +136,8 @@ export interface Position {
   proposalId: string; // originating proposal (original thesis)
   latestAssessment?: string;
   watchConditions?: string; // exit / stop watch triggers
+  stopPrice?: number; // alert (not a guaranteed stop) when side price falls to this
+  takeProfitPrice?: number; // alert when side price rises to this
   openedAt: string;
   updatedAt: string;
 }
@@ -221,4 +225,74 @@ export interface GroupPick {
   joinedUserIds: string[];
   createdAt: string;
   expiresAt: string;
+}
+
+// ---------- Personal context connectors & account linking ----------
+
+export type ConnectorProvider = "notion" | "slack" | "gmail" | "gemini";
+
+export interface ConnectedSource {
+  id: string;
+  userId: string;
+  provider: ConnectorProvider;
+  status: "connected" | "revoked" | "error";
+  scopes: string[];
+  tokenEnc: string; // AES-GCM encrypted JSON token blob (see src/lib/crypto.ts)
+  accountLabel?: string; // e.g. workspace name / email
+  lastSyncedAt?: string;
+  lastError?: string;
+  connectedAt: string;
+  revokedAt?: string;
+}
+
+/** A piece of personal context that influenced the profile — shown to the user, never treated as a trade instruction. */
+export interface ContextItem {
+  id: string;
+  userId: string;
+  sourceId: string;
+  provider: ConnectorProvider | "discord";
+  title: string;
+  excerpt: string; // short, never the full private message
+  url?: string;
+  createdAt: string;
+}
+
+// ---------- Trust, scoring, auth ----------
+
+/** YZi: hash of an approval or policy committed to BNB Smart Chain testnet. No private data onchain. */
+export interface AuditReceipt {
+  id: string;
+  userId: string;
+  kind: "policy" | "approval";
+  ref?: string; // proposal id for approvals
+  hash: string; // sha256 of the canonical record
+  chain: "bsc-testnet";
+  txHash?: string;
+  status: "pending" | "committed" | "failed" | "disabled";
+  error?: string;
+  createdAt: string;
+}
+
+/** Forecast calibration once a market settles. */
+export interface ForecastScore {
+  id: string;
+  userId?: string;
+  marketId: string;
+  proposalId?: string;
+  estimatedProbability: number; // Mayflower P(YES)
+  marketProbability: number; // market-implied P(YES) at proposal time
+  outcome: 0 | 1;
+  brier: number;
+  marketBrier: number;
+  scoredAt: string;
+}
+
+/** One-time magic login link token (sent over iMessage/Discord DM). */
+export interface LoginToken {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  next?: string;
+  expiresAt: string;
+  usedAt?: string;
 }

@@ -6,6 +6,7 @@ import type {
   User, UserThesis, Market, ResearchReport, TradeProposal, Order, Position,
   ChatMessage, MonitorEvent, AuditEvent, PortfolioSnapshot,
   Group, Contest, ContestEntry, GroupPick,
+  ConnectedSource, ContextItem, AuditReceipt, ForecastScore, LoginToken,
 } from "./types";
 
 export interface DB {
@@ -24,6 +25,11 @@ export interface DB {
   contests: Contest[];
   contestEntries: ContestEntry[];
   groupPicks: GroupPick[];
+  connectedSources: ConnectedSource[];
+  contextItems: ContextItem[];
+  auditReceipts: AuditReceipt[];
+  forecastScores: ForecastScore[];
+  loginTokens: LoginToken[];
 }
 
 const FILE = path.join(process.cwd(), ".data", "db.json");
@@ -31,6 +37,7 @@ const empty = (): DB => ({
   users: [], theses: [], markets: [], research: [], proposals: [], orders: [],
   positions: [], messages: [], monitorEvents: [], audit: [], snapshots: [],
   groups: [], contests: [], contestEntries: [], groupPicks: [],
+  connectedSources: [], contextItems: [], auditReceipts: [], forecastScores: [], loginTokens: [],
 });
 
 export function load(): DB {
