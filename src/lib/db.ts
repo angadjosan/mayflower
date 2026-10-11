@@ -121,7 +121,9 @@ async function supaTx<T>(sb: StateClient, fn: (db: DB) => T | Promise<T>): Promi
 
 // ---------------------------------------------------------------- File backend (dev fallback)
 
-const FILE = path.join(process.cwd(), ".data", "db.json");
+// Vercel's filesystem is read-only except /tmp, which is per-instance and wiped on cold start —
+// set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY for real persistence there.
+const FILE = process.env.VERCEL ? "/tmp/mayflower/db.json" : path.join(process.cwd(), ".data", "db.json");
 let fileLock: Promise<void> = Promise.resolve();
 
 function fileRead(): DB {
