@@ -1,3 +1,12 @@
+# Live calls (ElevenLabs agent)
+
+- **Text "call me"** (or "can we talk"): with a Twilio number imported (`ELEVENLABS_PHONE_NUMBER_ID`) we ring their phone; otherwise we text "tap to talk: <link>", which opens a browser call (`/call/<token>` redirects to ElevenLabs' talk-to page).
+- **A good bet calls you:** when a text produces a new pending trade idea, we ring them (or text the call link) and the agent opens with that idea. No idea = just a text.
+- **Dial in:** the Twilio number is assigned to the agent. Unknown callers get an account keyed to their number.
+- Same rules as text: nothing trades on a call; approvals go by the texted link. Calls end after 5 minutes.
+- Setup: `APP_URL=<public url> npx tsx scripts/voice-agent.mts` creates/updates the agent and its 5 webhook tools (prints `agent_id`). Env: `ELEVENLABS_AGENT_ID`, `ELEVENLABS_TOOL_SECRET`, `ELEVENLABS_PHONE_NUMBER_ID`, `SESSION_SECRET` (signs call links).
+- Free ElevenLabs tier = 15 agent minutes a month (measured account: free tier, 2,469 / 10,000 characters used on 2026-10-11).
+
 # Voice notes in iMessage (ElevenLabs)
 
 People can talk to Mayflower instead of typing: hold the mic button in iMessage and send a voice memo. This is the street-interview path.

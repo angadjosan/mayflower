@@ -1,6 +1,6 @@
 // How Mayflower sounds in a chat: no em/en dashes, and one thought per text bubble.
 
-const MAX_BUBBLES = 8;
+const MAX_BUBBLES = 4;
 
 /** Replace em/en dashes used as punctuation with a comma (or nothing at a line start). */
 export function deDash(text: string): string {

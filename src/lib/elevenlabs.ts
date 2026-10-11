@@ -9,7 +9,7 @@ const key = () => process.env.ELEVENLABS_API_KEY ?? "";
 const STT_MODEL = () => process.env.ELEVENLABS_STT_MODEL || "scribe_v2";
 const TTS_MODEL = () => process.env.ELEVENLABS_TTS_MODEL || "eleven_multilingual_v2";
 // Override with ELEVENLABS_VOICE_ID; list yours with GET /v1/voices.
-const VOICE_ID = () => process.env.ELEVENLABS_VOICE_ID || "cgSgspJ2msm6clMCkdW9";
+const VOICE_ID = () => process.env.ELEVENLABS_VOICE_ID || "TX3LPaxmHKxFdv7VOQHJ";
 
 /** An ElevenLabs HTTP error; `status` 401/402/429 means the key, plan or quota, not the audio. */
 export class ElevenLabsError extends Error {

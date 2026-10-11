@@ -1,0 +1,76 @@
+// Live voice calls with the ElevenLabs agent. With a Twilio number imported into ElevenLabs
+// (ELEVENLABS_PHONE_NUMBER_ID) we ring the user's phone; otherwise we text a signed link that opens a
+// browser call. Either way the call carries a token saying who they are, so the agent's tools use their account.
+import { load } from "./db";
+import { sign, verify } from "./session";
+import { normalizePhone } from "./voice";
+
+const APP_URL = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+const TTL_MS = 2 * 60 * 60 * 1000;
+const FRESH_MS = 30 * 60 * 1000;
+
+export const callsEnabled = () => Boolean(process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_AGENT_ID && process.env.ELEVENLABS_TOOL_SECRET);
+
+/** `<userId>.<expiresMs>.<sig>`: good for two hours, can't be forged or pointed at another user. */
+export function callToken(userId: string, now = Date.now()): string {
+  const body = `${userId}.${now + TTL_MS}`;
+  return `${body}.${sign(`call:${body}`)}`;
+}
+
+export function userIdFromCallToken(token?: string | null, now = Date.now()): string | null {
+  const m = /^([^.]+)\.(\d+)\.([\w-]+)$/.exec(token ?? "");
+  if (!m) return null;
+  const [, userId, exp, sig] = m;
+  if (Number(exp) < now || !verify(`call:${userId}.${exp}`, sig)) return null;
+  return userId;
+}
+
+export function callUrl(userId: string): string {
+  return `${APP_URL}/call/${callToken(userId)}`;
+}
+
+/** The user wants to talk live ("call me", "can we hop on a call"). */
+export function wantsCall(text: string): boolean {
+  return /\b(call me|give me a call|can (we|you) (talk|call)|hop on a call|(phone|voice) call|let'?s talk)\b/i.test(text);
+}
+
+/** What the agent opens with: a fresh pending trade idea if there is one, else an open question. */
+export async function callContext(userId: string): Promise<{ greeting: string; opener: string }> {
+  const idea = (await load()).proposals
+    .filter((p) => p.userId === userId && p.status === "pending" && Date.now() - Date.parse(p.createdAt) < FRESH_MS)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (!idea) {
+    return { greeting: "hey, it's mayflower. what's on your mind?", opener: "They asked to talk. Find out what they believe about an upcoming event and help them decide if it's worth betting on." };
+  }
+  const market = idea.market.title && idea.market.title !== idea.market.eventTitle ? `${idea.market.eventTitle}, ${idea.market.title}` : idea.market.eventTitle;
+  return {
+    greeting: `hey, it's mayflower. that ${idea.market.eventTitle} idea actually looks decent. want me to walk you through it?`,
+    opener: `You are calling about a trade that looks good: ${market}, ${idea.side} at up to ${Math.round(idea.limitPrice * 100)} cents, max loss $${idea.costUsd.toFixed(0)}. Our estimate ${Math.round(idea.estimatedProbability * 100)}% vs the market's ${Math.round(idea.marketProbability * 100)}%. Walk them through why, answer questions, and if they want in, send the approval link (proposalId ${idea.id}).`,
+  };
+}
+
+/** Ring the user through Twilio when we can; returns false when they need a link instead. */
+export async function ringUser(userId: string): Promise<boolean> {
+  const phoneNumberId = process.env.ELEVENLABS_PHONE_NUMBER_ID;
+  const user = (await load()).users.find((u) => u.id === userId);
+  const to = normalizePhone(user?.handle);
+  if (!callsEnabled() || !phoneNumberId || !to) return false;
+  try {
+    const res = await fetch("https://api.elevenlabs.io/v1/convai/twilio/outbound-call", {
+      method: "POST",
+      headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY!, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        agent_id: process.env.ELEVENLABS_AGENT_ID,
+        agent_phone_number_id: phoneNumberId,
+        to_number: to,
+        conversation_initiation_client_data: { dynamic_variables: { ...(await callContext(userId)), call_token: callToken(userId) } },
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (res.ok) return true;
+    console.error("[calls] outbound call failed", res.status, (await res.text().catch(() => "")).slice(0, 300));
+  } catch (e) {
+    console.error("[calls] outbound call error", e);
+  }
+  return false;
+}

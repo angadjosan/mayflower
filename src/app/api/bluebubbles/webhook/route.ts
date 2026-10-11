@@ -7,6 +7,8 @@ import { handleGroupMessage } from "@/lib/agent/group";
 import { bbEnabled, downloadAttachment, isVoiceMemo, type BBAttachment } from "@/lib/bluebubbles";
 import { ElevenLabsError, elevenEnabled, transcribe } from "@/lib/elevenlabs";
 import { wantsVoice } from "@/lib/voiceNotes";
+import { callsEnabled, callUrl, ringUser, wantsCall } from "@/lib/calls";
+import { load } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,12 +84,25 @@ export async function POST(req: Request) {
     }
     const user = await getOrCreateUser({ handle: address });
     await storeMessage(user.id, "user", text, "imessage");
+    // "call me": ring their phone, or text a link that opens a call in the browser.
+    if (callsEnabled() && wantsCall(text)) {
+      await sendToUser(user.id, (await ringUser(user.id)) ? "calling you now" : `tap to talk: ${callUrl(user.id)}`);
+      return;
+    }
+    const startedAt = new Date().toISOString();
     let reply: string;
     try {
       reply = await handleMessage(user.id, text, "imessage");
     } catch (e) {
       console.error(e);
       reply = "ah something broke on my end\ngive me a sec and send that again";
+    }
+    // A good bet (a new pending trade idea) gets a call; anything else is just a text.
+    const goodBet = callsEnabled() && (await load()).proposals.some((p) => p.userId === user.id && p.status === "pending" && p.createdAt >= startedAt);
+    if (goodBet) {
+      const rang = await ringUser(user.id);
+      await sendToUser(user.id, `${reply}\n${rang ? "this one looks good, calling you now" : `this one looks good. tap to talk it through: ${callUrl(user.id)}`}`);
+      return;
     }
     await sendToUser(user.id, reply, { voiceIn, askedForVoice: wantsVoice(text) });
   });

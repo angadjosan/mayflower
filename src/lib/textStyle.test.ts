@@ -14,8 +14,8 @@ describe("textStyle", () => {
     expect(toBubbles("On it 🔎\n\nScanning — now 🎉\n")).toEqual(["on it 🔎", "scanning, now"]);
     const many = Array.from({ length: 12 }, (_, i) => `line ${i}`).join("\n");
     const b = toBubbles(many);
-    expect(b).toHaveLength(8);
-    expect(b[7]).toContain("line 11");
+    expect(b).toHaveLength(4);
+    expect(b[3]).toContain("line 11");
   });
 
   it("lowercases everything but links, and keeps at most one emoji", () => {
