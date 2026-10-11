@@ -1,4 +1,4 @@
-// Create or update the Mayflower ElevenLabs voice agent and its webhook tools. English agents must use a v2 turbo/flash voice model.
+// Create or update the Mayflower ElevenLabs voice agent and its webhook tools.
 // Run: APP_URL=https://<public app> npx tsx scripts/voice-agent.mts   (reads ELEVENLABS_API_KEY, ELEVENLABS_TOOL_SECRET, ELEVENLABS_AGENT_ID)
 import { voiceAgentConfig, VOICE_SECRET_HEADER } from "../src/lib/voice.ts";
 
@@ -40,7 +40,8 @@ const agent = {
         },
       },
     },
-    tts: { voice_id: process.env.ELEVENLABS_VOICE_ID || "TX3LPaxmHKxFdv7VOQHJ", model_id: "eleven_flash_v2", speed: 1.15 },
+    // Most natural-sounding phone voice: v3 conversational, normal speed, a bit of expressive variation.
+    tts: { voice_id: process.env.ELEVENLABS_VOICE_ID || "TX3LPaxmHKxFdv7VOQHJ", model_id: "eleven_v3_conversational", speed: 1.0, stability: 0.35, similarity_boost: 0.8, optimize_streaming_latency: 2 },
     conversation: { max_duration_seconds: 180 },
   },
   // Public so a texted link can open the talk page; tools still need a valid call_token or caller id.
