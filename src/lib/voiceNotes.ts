@@ -17,7 +17,7 @@ const EMOJI_RE = /\p{Extended_Pictographic}(?:‍\p{Extended_Pictographic}|️|\
 
 /** The user asked to hear the answer instead of reading it. */
 export function wantsVoice(text: string): boolean {
-  return /\b(voice (memo|note|message)|send (me )?(an? )?(audio|voice)|say it|say that|read it (out|to me)|talk to me|out loud)\b/i.test(text);
+  return /\b(voice (memo|note|message)|send (me )?(an? )?(audio|voice)|read it (out|to me)|out loud)\b/i.test(text);
 }
 
 /** Lines that only work as text: links and approval codes. */
@@ -30,31 +30,44 @@ const SPELL: Record<string, string> = {
   ai: "A I", ev: "E V", pnl: "P and L",
 };
 
-/** Text made for the ear: no links, no emoji, no dashes, acronyms spelled out, one line per sentence. */
-export function speakable(text: string): string {
-  const lines = deDash(text)
+/** One line made for the ear: no emoji, no dashes, acronyms spelled out, ends like a sentence. */
+function speakLine(line: string): string {
+  const l = deDash(line)
     .replace(EMOJI_RE, "")
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l && !mustStayText(l))
-    .map((l) => l.replace(/\b[a-z]{2,5}\b/gi, (w) => (w === w.toLowerCase() && SPELL[w] ? SPELL[w] : w)))
-    .map((l) => (/[.!?]$/.test(l) ? l : `${l}.`));
-  let s = lines.join(" ").replace(/\s{2,}/g, " ").trim();
-  if (s.length > VOICE_MAX_CHARS) s = s.slice(0, VOICE_MAX_CHARS).replace(/[^.!?]*$/, "").trim() || s.slice(0, VOICE_MAX_CHARS);
-  return s;
+    .replace(/\b[a-z]{2,5}\b/gi, (w) => (w === w.toLowerCase() && SPELL[w] ? SPELL[w] : w))
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  return !l || /[.!?]$/.test(l) ? l : `${l}.`;
+}
+
+/** Text made for the ear: links dropped, one sentence per line. */
+export function speakable(text: string): string {
+  return text.split(/\r?\n/).filter((l) => !mustStayText(l)).map(speakLine).filter(Boolean).join(" ");
 }
 
 export interface ReplyPlan {
   /** What to say in the voice note, or null to send the whole reply as texts. */
   speak: string | null;
-  /** What still goes out as texts: everything when not voiced, else only the links and codes. */
+  /** What still goes out as texts: everything when not voiced, else links, codes and anything past the length cap. */
   text: string;
 }
 
 export function planReply(reply: string, opts: { voiceIn?: boolean; askedForVoice?: boolean } = {}): ReplyPlan {
   if (!opts.voiceIn && !opts.askedForVoice) return { speak: null, text: reply };
-  const speak = speakable(reply);
+  const spoken: string[] = [];
+  const rest: string[] = [];
+  let full = false;
+  for (const line of reply.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)) {
+    const said = mustStayText(line) ? "" : speakLine(line);
+    if (!said && !mustStayText(line)) continue;
+    // Whole lines only; once the note is full, the rest of the reply follows as text, in order.
+    if (said && !full && [...spoken, said].join(" ").length <= VOICE_MAX_CHARS) spoken.push(said);
+    else { if (said) full = true; rest.push(line); }
+  }
+  const speak = spoken.join(" ");
   if (speak.length < VOICE_MIN_CHARS) return { speak: null, text: reply };
-  const keep = reply.split(/\r?\n/).filter((l) => mustStayText(l)).join("\n");
-  return { speak: keep ? `${speak} the link's in the next text.` : speak, text: keep };
+  const text = rest.join("\n");
+  if (!text) return { speak, text };
+  const pointer = rest.some(mustStayText) ? "the link's in the next text." : "i texted you the rest.";
+  return { speak: `${speak} ${pointer}`, text };
 }

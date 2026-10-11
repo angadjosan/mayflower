@@ -8,23 +8,25 @@ export const bbEnabled = Boolean(URL_ && PASSWORD);
 
 const api = (path: string) => `${URL_}${path}${path.includes("?") ? "&" : "?"}password=${encodeURIComponent(PASSWORD!)}`;
 
-type SendResult = "ok" | "error" | "timeout";
+export type SendResult = "ok" | "error" | "timeout";
+
+/** Error text safe to log: the BlueBubbles password rides in the query string. */
+const redact = (e: unknown) => String((e as Error)?.stack ?? e).replace(/password=[^&\s"]+/g, "password=<redacted>");
 
 // macOS 26 (Tahoe) stores 1:1 chats as `any;-;<handle>`. Sending to `iMessage;-;` there still
 // delivers but the request hangs until timeout, so try `any;-;` first. Only a definite error
 // response falls through to the next guid; a timeout may have delivered, so it is not retried.
-async function toHandle(handle: string, send: (chatGuid: string) => Promise<SendResult>): Promise<boolean> {
-  if (!handle) return false;
+async function toHandle(handle: string, send: (chatGuid: string) => Promise<SendResult>): Promise<SendResult> {
+  if (!handle) return "error";
   for (const guid of [`any;-;${handle}`, `iMessage;-;${handle}`]) {
     const r = await send(guid);
-    if (r === "ok") return true;
-    if (r === "timeout") return false;
+    if (r !== "error") return r;
   }
-  return false;
+  return "error";
 }
 
 export async function sendIMessage(handle: string, text: string): Promise<boolean> {
-  return toHandle(handle, (guid) => post(guid, text));
+  return (await toHandle(handle, (guid) => post(guid, text))) === "ok";
 }
 
 /** Send to any chat guid — a 1:1 chat ("iMessage;-;<handle>") or a group ("iMessage;+;chat…"). */
@@ -35,10 +37,10 @@ export async function sendToChat(chatGuid: string, text: string): Promise<boolea
 
 /**
  * Send an audio file to a 1:1 chat. Without the Private API it arrives as a playable audio
- * attachment, not iMessage's native voice-memo bubble.
+ * attachment, not iMessage's native voice-memo bubble. "timeout" means it may have been delivered.
  */
-export async function sendAudio(handle: string, audio: Buffer, filename: string): Promise<boolean> {
-  if (!bbEnabled) return false;
+export async function sendAudio(handle: string, audio: Buffer, filename: string): Promise<SendResult> {
+  if (!bbEnabled) return "error";
   return toHandle(handle, async (chatGuid) => {
     const form = new FormData();
     form.append("chatGuid", chatGuid);
@@ -57,24 +59,32 @@ export interface BBAttachment {
   transferName?: string;
 }
 
-/** iMessage voice memos are CAF files (uti com.apple.coreaudio-format); BlueBubbles may relabel them audio/mp3. */
-export function isAudioAttachment(a: BBAttachment): boolean {
-  return a.uti === "com.apple.coreaudio-format" || Boolean(a.mimeType?.startsWith("audio/")) || /\.(caf|m4a|mp3|wav|aac)$/i.test(a.transferName ?? "");
+/**
+ * An iMessage voice memo: a CAF file (uti com.apple.coreaudio-format), even though BlueBubbles
+ * relabels it audio/mp3. Other audio files (songs, clips) are not treated as someone talking to us.
+ */
+export function isVoiceMemo(a: BBAttachment): boolean {
+  return a.uti === "com.apple.coreaudio-format";
 }
 
 /**
  * Download an attachment. For voice memos BlueBubbles converts the CAF to AAC in an .m4a container
  * (it labels it audio/mp3, measured 2026-10-11), which speech-to-text accepts. The webhook can fire
- * before the file is on disk, so retry briefly.
+ * before the file is on disk, so retry briefly. Files over maxBytes come back as "too_big".
  */
-export async function downloadAttachment(guid: string): Promise<{ data: Buffer; filename: string; mime: string } | null> {
+export async function downloadAttachment(
+  guid: string,
+  maxBytes: number,
+): Promise<{ data: Buffer; filename: string; mime: string } | "too_big" | null> {
   if (!bbEnabled || !guid) return null;
   for (let attempt = 0; attempt < 4; attempt++) {
     if (attempt) await new Promise((r) => setTimeout(r, 1500 * attempt));
     try {
       const res = await fetch(api(`/api/v1/attachment/${encodeURIComponent(guid)}/download`), { signal: AbortSignal.timeout(30_000) });
       if (!res.ok) continue;
+      if (Number(res.headers.get("content-length") ?? 0) > maxBytes) return "too_big";
       const data = Buffer.from(await res.arrayBuffer());
+      if (data.length > maxBytes) return "too_big";
       if (!data.length) continue;
       const mime = res.headers.get("content-type") ?? "";
       // An ISO-BMFF file ("ftyp" at byte 4) is m4a whatever the header says.
@@ -83,7 +93,7 @@ export async function downloadAttachment(guid: string): Promise<{ data: Buffer; 
         ? { data, filename: "voice.m4a", mime: "audio/mp4" }
         : { data, filename: mime.includes("caf") ? "voice.caf" : "voice.mp3", mime: mime || "application/octet-stream" };
     } catch (e) {
-      console.error("[bluebubbles] attachment download error", e);
+      console.error("[bluebubbles] attachment download error", redact(e));
     }
   }
   return null;
@@ -113,7 +123,8 @@ async function request(path: string, init: RequestInit, timeoutMs: number, chatG
     console.error("[bluebubbles] send failed", path, chatGuid.split(";")[0], res.status, raw.slice(0, 300));
     return "error";
   } catch (e) {
-    console.error("[bluebubbles] send error", path, e);
-    return (e as Error)?.name === "TimeoutError" ? "timeout" : "error";
+    console.error("[bluebubbles] send error", path, redact(e));
+    const err = e as Error & { cause?: { name?: string } };
+    return err?.name === "TimeoutError" || err?.cause?.name === "TimeoutError" ? "timeout" : "error";
   }
 }

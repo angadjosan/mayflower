@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { planReply, speakable, wantsVoice, VOICE_MIN_CHARS } from "./voiceNotes";
-import { isAudioAttachment } from "./bluebubbles";
+import { isVoiceMemo } from "./bluebubbles";
 
 const LONG = "honestly the chiefs line looks fair to me\nthe market has them at 62 percent and i get about the same\nnot worth a bet at that price";
 
@@ -32,6 +32,22 @@ describe("planReply", () => {
   });
 });
 
+describe("long replies", () => {
+  it("speaks whole lines up to the cap and texts the rest in order", () => {
+    const lines = Array.from({ length: 30 }, (_, i) => `line number ${i} of a long answer about the market`);
+    const p = planReply(lines.join("\n"), { voiceIn: true });
+    expect(p.speak!.length).toBeLessThanOrEqual(700 + 30);
+    expect(p.speak).toMatch(/i texted you the rest\.$/);
+    const spokenCount = (p.speak!.match(/line number/g) ?? []).length;
+    expect(p.text.split("\n")).toEqual(lines.slice(spokenCount));
+  });
+
+  it("falls back to text when the first line alone is too long to speak", () => {
+    const giant = "word ".repeat(200).trim();
+    expect(planReply(giant, { voiceIn: true }).speak).toBeNull();
+  });
+});
+
 describe("speakable", () => {
   it("spells lowercase acronyms, drops emoji and dashes, ends sentences", () => {
     expect(speakable("nfl sunday 🏈\nbtc above 120k — maybe")).toBe("N F L sunday. bitcoin above 120k, maybe.");
@@ -41,11 +57,6 @@ describe("speakable", () => {
     expect(speakable("NFL odds")).toBe("NFL odds.");
   });
 
-  it("caps very long replies at a sentence boundary", () => {
-    const s = speakable(Array(80).fill("this is a sentence.").join(" "));
-    expect(s.length).toBeLessThanOrEqual(700);
-    expect(s.endsWith(".")).toBe(true);
-  });
 
   it("treats the threshold as spoken length", () => {
     expect(VOICE_MIN_CHARS).toBeGreaterThan("got it. up to $200 total.".length);
@@ -53,19 +64,22 @@ describe("speakable", () => {
 });
 
 describe("wantsVoice", () => {
-  it.each(["send me a voice memo", "can you say that out loud", "talk to me", "voice note pls"])("yes: %s", (t) => {
+  it.each(["send me a voice memo", "can you say that out loud", "read it to me", "voice note pls"])("yes: %s", (t) => {
     expect(wantsVoice(t)).toBe(true);
   });
-  it.each(["the chiefs win sunday", "my budget is $200", "what's my portfolio"])("no: %s", (t) => {
+  it.each(["the chiefs win sunday", "my budget is $200", "what's my portfolio", "talk to me about btc", "what did you say it was"])("no: %s", (t) => {
     expect(wantsVoice(t)).toBe(false);
   });
 });
 
-describe("isAudioAttachment", () => {
+describe("isVoiceMemo", () => {
   it("matches an iMessage voice memo as BlueBubbles serialises it", () => {
-    expect(isAudioAttachment({ uti: "com.apple.coreaudio-format", mimeType: "audio/mp3", transferName: "Audio Message.mp3.mp3" })).toBe(true);
+    expect(isVoiceMemo({ uti: "com.apple.coreaudio-format", mimeType: "audio/mp3", transferName: "Audio Message.mp3.mp3" })).toBe(true);
+  });
+  it("ignores a song someone shares", () => {
+    expect(isVoiceMemo({ uti: "public.mp3", mimeType: "audio/mpeg", transferName: "song.mp3" })).toBe(false);
   });
   it("ignores photos", () => {
-    expect(isAudioAttachment({ uti: "public.jpeg", mimeType: "image/jpeg", transferName: "IMG_1.jpeg" })).toBe(false);
+    expect(isVoiceMemo({ uti: "public.jpeg", mimeType: "image/jpeg", transferName: "IMG_1.jpeg" })).toBe(false);
   });
 });

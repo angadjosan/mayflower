@@ -2,9 +2,10 @@ import crypto from "crypto";
 import { NextResponse, after } from "next/server";
 import { getOrCreateUser } from "@/lib/db";
 import { storeMessage, sendToUser } from "@/lib/notify";
+import { sendToChat } from "@/lib/transport";
 import { handleMessage } from "@/lib/agent/chat";
 import { handleGroupMessage } from "@/lib/agent/group";
-import { bbEnabled, downloadAttachment, isAudioAttachment, type BBAttachment } from "@/lib/bluebubbles";
+import { bbEnabled, downloadAttachment, isVoiceMemo, type BBAttachment } from "@/lib/bluebubbles";
 import { elevenEnabled, transcribe } from "@/lib/elevenlabs";
 import { wantsVoice } from "@/lib/voiceNotes";
 
@@ -47,8 +48,8 @@ export async function POST(req: Request) {
   // An attachment-only message carries U+FFFC (or nothing) as its text.
   const typed = body.data?.text?.replace(/\uFFFC/g, "").trim() ?? "";
   const address = body.data?.handle?.address;
-  // A voice memo (isAudioMessage, or an audio attachment) is transcribed and handled like a text.
-  const memo = body.data?.attachments?.find(isAudioAttachment);
+  // A voice memo is transcribed and handled like a text. Group voice memos get text replies.
+  const memo = body.data?.attachments?.find(isVoiceMemo);
   const voiceIn = Boolean(memo?.guid) && (Boolean(body.data?.isAudioMessage) || !typed);
   if (body.type !== "new-message" || body.data?.isFromMe || (!typed && !voiceIn) || !address || !firstTime(body.data?.guid)) {
     return NextResponse.json({ ok: true, ignored: true });
@@ -64,12 +65,10 @@ export async function POST(req: Request) {
     let text = typed;
     if (voiceIn) {
       const heard = await hear(memo!.guid!);
-      if (!heard) {
-        if (isGroup) return;
-        const user = await getOrCreateUser({ handle: address });
-        await sendToUser(user.id, elevenEnabled()
-          ? "couldn't quite catch that voice memo\nmind sending it again or typing it?"
-          : "i can't listen to voice memos yet\nmind typing that one?");
+      if (typeof heard !== "string") {
+        const sorry = MEMO_SORRY[heard.error];
+        if (isGroup) await sendToChat(chatGuid!, sorry);
+        else await sendToUser((await getOrCreateUser({ handle: address })).id, sorry);
         return;
       }
       text = heard;
@@ -97,15 +96,25 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-/** Transcribe a voice memo. null when voice is off, the download fails, or nothing was said. */
-async function hear(attachmentGuid: string): Promise<string | null> {
-  if (!elevenEnabled()) return null;
-  const file = await downloadAttachment(attachmentGuid);
-  if (!file) return null;
+// ~6 MB of iMessage AAC is several minutes of talking; longer memos cost STT time and money for no demo value.
+const MAX_MEMO_BYTES = 6 * 1024 * 1024;
+
+const MEMO_SORRY = {
+  off: "i can't listen to voice memos yet\nmind typing that one?",
+  failed: "couldn't quite catch that voice memo\nmind sending it again or typing it?",
+  too_long: "that one's a bit long for me\nmind keeping it under a minute or two?",
+} as const;
+
+/** Transcribe a voice memo, or say why we couldn't. */
+async function hear(attachmentGuid: string): Promise<string | { error: keyof typeof MEMO_SORRY }> {
+  if (!elevenEnabled()) return { error: "off" };
+  const file = await downloadAttachment(attachmentGuid, MAX_MEMO_BYTES);
+  if (file === "too_big") return { error: "too_long" };
+  if (!file) return { error: "failed" };
   try {
-    return (await transcribe(file.data, file.filename, file.mime)) || null;
+    return (await transcribe(file.data, file.filename, file.mime)) || { error: "failed" };
   } catch (e) {
     console.error("[voice memo]", e);
-    return null;
+    return { error: "failed" };
   }
 }

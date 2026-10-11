@@ -4,7 +4,8 @@ People can talk to Mayflower instead of typing: hold the mic button in iMessage 
 
 - **In:** a voice memo is transcribed with ElevenLabs speech-to-text (`scribe_v2`) and handled exactly like a typed text.
 - **Out:** a reply to a voice memo comes back as a voice note (ElevenLabs text-to-speech, `eleven_flash_v2_5`) when it is a real conversational answer. Quick acks ("got it", under ~90 spoken characters) stay as texts. Links and `APPROVE` codes are never read out; they follow the voice note as texts, and the voice says "the link's in the next text".
-- Typing "send me a voice memo", "say it out loud" or "talk to me" also gets a spoken answer. A typed conversation stays typed.
+- Typing "send me a voice memo", "say it out loud" or "read it to me" also gets a spoken answer. A typed conversation stays typed.
+- A spoken reply is capped at ~700 characters of whole lines; anything past that follows as texts ("i texted you the rest"). Voice memos over 6 MB get "keep it under a minute or two". Group chats transcribe voice memos but reply in text.
 - **Fallbacks:** no `ELEVENLABS_API_KEY` means voice memos get "i can't listen to voice memos yet, mind typing that one?" and every reply is text. Any text-to-speech or send failure falls back to the normal texts.
 
 | Piece | File |

@@ -2,7 +2,7 @@ import { tx, load, id, now } from "./db";
 import type { ChatMessage } from "./types";
 import { isDiscord, sendDirect, transportEnabled } from "./transport";
 import { casual, deDash } from "./textStyle";
-import { sendAudio } from "./bluebubbles";
+import { sendAudio, type SendResult } from "./bluebubbles";
 import { elevenEnabled, synthesize } from "./elevenlabs";
 import { planReply } from "./voiceNotes";
 
@@ -32,7 +32,8 @@ export async function sendToUser(userId: string, raw: string, opts: { voiceIn?: 
   if (!user?.handle) return;
   if (viaChat && !isDiscord(user.handle) && elevenEnabled()) {
     const plan = planReply(raw, opts);
-    if (plan.speak && (await sendVoiceNote(user.handle, plan.speak))) {
+    // A timed-out audio send may still arrive, so only a definite failure falls back to the full texts.
+    if (plan.speak && (await sendVoiceNote(user.handle, plan.speak)) !== "error") {
       if (plan.text) await sendDirect(user.handle, casual(deDash(plan.text)));
       return;
     }
@@ -40,11 +41,11 @@ export async function sendToUser(userId: string, raw: string, opts: { voiceIn?: 
   await sendDirect(user.handle, text);
 }
 
-async function sendVoiceNote(handle: string, speech: string): Promise<boolean> {
+async function sendVoiceNote(handle: string, speech: string): Promise<SendResult> {
   try {
     return await sendAudio(handle, await synthesize(speech), "mayflower.mp3");
   } catch (e) {
     console.error("[voice note]", e);
-    return false;
+    return "error";
   }
 }
