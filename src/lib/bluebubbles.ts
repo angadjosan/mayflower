@@ -103,9 +103,9 @@ export async function downloadAttachment(
       const res = await fetch(api(`/api/v1/attachment/${encodeURIComponent(guid)}/download`), { signal: AbortSignal.timeout(10_000) });
       // BlueBubbles can answer 200 with a JSON error while the file is still transferring.
       if (!res.ok || res.headers.get("content-type")?.includes("json")) continue;
-      if (Number(res.headers.get("content-length") ?? 0) > maxBytes) return "too_big";
-      const data = Buffer.from(await res.arrayBuffer());
-      if (data.length > maxBytes) return "too_big";
+      // BlueBubbles sends no Content-Length, so stop reading once the file passes the cap.
+      const data = await readCapped(res, maxBytes);
+      if (data === "too_big") return "too_big";
       if (!data.length) continue;
       const mime = res.headers.get("content-type") ?? "";
       // An ISO-BMFF file ("ftyp" at byte 4) is m4a whatever the header says.
@@ -118,6 +118,23 @@ export async function downloadAttachment(
     }
   }
   return null;
+}
+
+async function readCapped(res: Response, maxBytes: number): Promise<Buffer | "too_big"> {
+  if (!res.body) return Buffer.alloc(0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return Buffer.concat(chunks);
+    total += value.length;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return "too_big";
+    }
+    chunks.push(value);
+  }
 }
 
 async function post(chatGuid: string, text: string): Promise<SendResult> {
