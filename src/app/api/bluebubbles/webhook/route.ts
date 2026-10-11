@@ -4,7 +4,8 @@ import { getOrCreateUser } from "@/lib/db";
 import { storeMessage, sendToUser } from "@/lib/notify";
 import { handleMessage } from "@/lib/agent/chat";
 import { handleGroupMessage } from "@/lib/agent/group";
-import { bbEnabled } from "@/lib/bluebubbles";
+import { bbEnabled, sendAttachment } from "@/lib/bluebubbles";
+import { tx } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,6 +72,25 @@ export async function POST(req: Request) {
       reply = "ah something broke on my end\ngive me a sec and send that again";
     }
     await sendToUser(user.id, reply);
+    await sendContactCardOnce(user.id, address);
   });
   return NextResponse.json({ ok: true });
+}
+
+/** First conversation: share Mayflower's contact card (name + logo) so the chat shows as "Mayflower". */
+async function sendContactCardOnce(userId: string, handle: string) {
+  const claimed = await tx((db) => {
+    const u = db.users.find((x) => x.id === userId) as ({ contactCardSentAt?: string } & object) | undefined;
+    if (!u || u.contactCardSentAt) return false;
+    u.contactCardSentAt = new Date().toISOString();
+    return true;
+  });
+  if (!claimed) return;
+  try {
+    const base = (process.env.APP_URL || "https://mayflower-lac.vercel.app").replace(/\/$/, "");
+    const card = await fetch(`${base}/Mayflower.vcf`).then((r) => (r.ok ? r.arrayBuffer() : null));
+    if (card) await sendAttachment(handle, "Mayflower.vcf", card, "text/vcard");
+  } catch (e) {
+    console.error("[contact card]", e);
+  }
 }
