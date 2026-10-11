@@ -3,7 +3,7 @@
 People can talk to Mayflower instead of typing: hold the mic button in iMessage and send a voice memo. This is the street-interview path.
 
 - **In:** a voice memo is transcribed with ElevenLabs speech-to-text (`scribe_v2`) and handled exactly like a typed text.
-- **Out:** a reply to a voice memo comes back as a voice note (ElevenLabs text-to-speech, `eleven_flash_v2_5`) when it is a real conversational answer. Quick acks ("got it", under ~90 spoken characters) stay as texts. Links and `APPROVE` codes are never read out; they follow the voice note as texts, and the voice says "the link's in the next text".
+- **Out:** a reply to a voice memo comes back as a voice note (ElevenLabs text-to-speech, `eleven_multilingual_v2` at speed 1.2) when it is a real conversational answer. Quick acks ("got it", under ~90 spoken characters) stay as texts. Links and `APPROVE` codes are never read out; they follow the voice note as texts, and the voice says "the link's in the next text".
 - Typing "send me a voice memo", "say it out loud" or "read it to me" also gets a spoken answer. A typed conversation stays typed.
 - A spoken reply is capped at ~320 characters (~20 s) of whole lines; anything past that follows as texts ("i texted you the rest"). A reply with more than one link (a list of trade ideas) stays all text so each link keeps its label. Voice memos over 6 MB get "mind sending a shorter one?". Voice memos in group chats are never transcribed (they are between friends, not to us).
 - **Use a paid ElevenLabs key and test it from the deployed server.** The free tier can answer 401 "unusual activity" from cloud IPs like Vercel's. A 401/402/429 tells the user "my ears are down for a sec, mind typing that one?" instead of asking them to re-record.

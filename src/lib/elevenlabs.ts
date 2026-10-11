@@ -7,7 +7,7 @@ export const elevenEnabled = () => Boolean(process.env.ELEVENLABS_API_KEY);
 
 const key = () => process.env.ELEVENLABS_API_KEY ?? "";
 const STT_MODEL = () => process.env.ELEVENLABS_STT_MODEL || "scribe_v2";
-const TTS_MODEL = () => process.env.ELEVENLABS_TTS_MODEL || "eleven_flash_v2_5";
+const TTS_MODEL = () => process.env.ELEVENLABS_TTS_MODEL || "eleven_multilingual_v2";
 // Override with ELEVENLABS_VOICE_ID; list yours with GET /v1/voices.
 const VOICE_ID = () => process.env.ELEVENLABS_VOICE_ID || "cgSgspJ2msm6clMCkdW9";
 
@@ -46,7 +46,8 @@ export async function synthesize(text: string): Promise<Buffer> {
       text,
       model_id: TTS_MODEL(),
       apply_text_normalization: "auto",
-      voice_settings: { stability: 0.4, similarity_boost: 0.75, style: 0.2, use_speaker_boost: true },
+      // speed 1.2 (the max) reads ~22% faster; eleven_v3 ignores speed, so it is not the default.
+      voice_settings: { stability: 0.4, similarity_boost: 0.75, style: 0.3, use_speaker_boost: true, speed: 1.2 },
     }),
     signal: AbortSignal.timeout(30_000),
   });
