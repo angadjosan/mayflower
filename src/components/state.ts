@@ -1,9 +1,13 @@
 import type {
-  AuditEvent, ChatMessage, Citation, MonitorEvent, Order, OrderMode, Position, ResearchReport, TradeProposal, User, UserThesis,
+  AuditEvent, ChatMessage, Citation, MonitorEvent, Order, OrderMode, Position, ResearchReport, TradeProposal, User, UserThesis, Venue,
 } from "@/lib/types";
 
-export type ProposalView = TradeProposal & { research?: ResearchReport; approvalUrl: string };
+export type ProposalView = TradeProposal & { research?: ResearchReport; approvalUrl: string; venue?: Venue };
 export type PositionView = Position & {
+  venue?: Venue;
+  evidenceFor?: ResearchReport["evidenceFor"];
+  evidenceAgainst?: ResearchReport["evidenceAgainst"];
+  researchSummary?: string;
   thesis?: string;
   sizingExplanation?: string;
   citations?: Citation[];
@@ -23,16 +27,22 @@ export interface PortfolioView {
   mode: OrderMode;
   topicExposure: { topic: string; usd: number }[];
 }
+export type OrderView = Order & { marketTitle?: string };
+export interface Balances {
+  gemini: { availableUsd: number; mode: string } | null;
+  testWallet: { address: string; usdc: number; createdAt: string } | null;
+}
 export interface DashState {
   user: User;
   theses: UserThesis[];
   proposals: ProposalView[];
   positions: PositionView[];
-  orders: Order[];
+  orders: OrderView[];
   messages: ChatMessage[];
   monitorEvents: MonitorEvent[];
   audit: AuditEvent[];
   portfolio: PortfolioView;
+  balances?: Balances;
   modes: { llm: boolean; exchange: "sandbox" | "simulated"; polymarket: "live" | "simulated" | "off"; hyperliquid: "testnet" | "live" | "simulated" | "off"; research: "context.dev" | "mock"; imessage: boolean };
 }
 

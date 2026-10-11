@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import type { Order, ProposalStatus } from "@/lib/types";
 
@@ -45,35 +46,41 @@ export default function ApproveActions({
   if (order) {
     const good = ["filled", "partially_filled", "open", "submitted"].includes(order.status);
     return (
-      <div className={`rounded-xl p-4 text-sm ${good ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}>
-        <p className="font-semibold">{good ? "Order placed" : "Order not placed"}</p>
-        <p className="mt-1">{describe(order)}</p>
-        {error && !good && <p className="mt-1">{error}</p>}
+      <div className={`animate-pop rounded-2xl border p-5 text-center text-sm ${good ? "border-line bg-surface" : "border-down/30 bg-down-soft"}`}>
+        <div className={`mx-auto flex h-10 w-10 items-center justify-center rounded-full ${good ? "bg-up-soft text-up" : "bg-surface text-down"}`} aria-hidden>
+          <svg viewBox="0 0 16 16" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+            {good ? <path d="M3.5 8.5l3 3 6-7" /> : <path d="M8 4v5M8 11.5v.5" />}
+          </svg>
+        </div>
+        <p className="mt-3 text-base font-semibold text-fg">{good ? "Order placed" : "Order not placed"}</p>
+        <p className="mt-1 text-muted">{describe(order)}</p>
+        {error && !good && <p className="mt-1 text-down">{error}</p>}
+        <Link href="/" className="mt-4 inline-block text-[13px] text-fg-2 underline decoration-line-strong underline-offset-2 hover:text-fg">Open dashboard</Link>
       </div>
     );
   }
 
   if (status !== "pending") {
     return (
-      <div className="rounded-xl bg-neutral-100 p-4 text-sm text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
-        This proposal is <strong>{status}</strong>.{status === "expired" && " Ask Mayflower for a fresh one — prices may have moved."}
-        {error && <p className="mt-1 text-red-700">{error}</p>}
+      <div className="rounded-2xl border border-line bg-surface p-4 text-center text-sm text-fg-2">
+        This proposal is <strong className="font-medium text-fg">{status}</strong>.{status === "expired" && " Ask Mayflower for a fresh one; prices may have moved."}
+        {error && <p className="mt-1 text-down">{error}</p>}
       </div>
     );
   }
 
   return (
     <div className="space-y-2">
-      {error && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {error && <p className="rounded-xl bg-down-soft p-3 text-sm text-down">{error}</p>}
       <button
         disabled={busy} onClick={() => call("approve")}
-        className="w-full rounded-xl bg-neutral-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+        className="h-12 w-full rounded-full bg-ink text-[15px] font-medium text-ink-fg transition-opacity hover:opacity-90 active:scale-[0.99] disabled:opacity-50"
       >
-        {busy ? "Working…" : "Approve this exact order"}
+        {busy ? "Placing order…" : "Approve this exact order"}
       </button>
       <button
         disabled={busy} onClick={() => call("reject")}
-        className="w-full rounded-xl border border-neutral-300 px-4 py-3 text-sm font-medium disabled:opacity-50 dark:border-neutral-700"
+        className="h-11 w-full rounded-full text-sm text-muted transition-colors hover:bg-sunken hover:text-fg disabled:opacity-50"
       >
         Reject
       </button>

@@ -4,11 +4,11 @@ import { getOrCreateUser } from "@/lib/db";
 import { storeMessage, sendToUser } from "@/lib/notify";
 import { handleMessage } from "@/lib/agent/chat";
 import { handleGroupMessage } from "@/lib/agent/group";
-import { bbEnabled, downloadAttachment, isVoiceMemo, type BBAttachment } from "@/lib/bluebubbles";
+import { bbEnabled, downloadAttachment, isVoiceMemo, sendAttachment, type BBAttachment } from "@/lib/bluebubbles";
 import { ElevenLabsError, elevenEnabled, transcribe } from "@/lib/elevenlabs";
 import { wantsVoice } from "@/lib/voiceNotes";
 import { callsEnabled, callUrl, claimCall, ringUser, wantsCall } from "@/lib/calls";
-import { load } from "@/lib/db";
+import { load, tx } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -107,9 +107,11 @@ export async function POST(req: Request) {
     if (goodBet && (await claimCall(user.id))) {
       const rang = await ringUser(user.id, goodBet.id);
       await sendToUser(user.id, `${reply}\n${rang ? "this one looks good, calling you now" : `this one looks good. tap to talk it through: ${callUrl(user.id, goodBet.id)}`}`);
+      await sendContactCardOnce(user.id, address);
       return;
     }
     await sendToUser(user.id, reply, { voiceIn, askedForVoice: wantsVoice(text) });
+    await sendContactCardOnce(user.id, address);
   });
   return NextResponse.json({ ok: true });
 }
@@ -136,5 +138,23 @@ async function hear(attachmentGuid: string): Promise<string | { error: keyof typ
     console.error("[voice memo]", e);
     // A bad key, unpaid plan or used-up quota won't fix itself on a re-record.
     return { error: e instanceof ElevenLabsError && [401, 402, 429].includes(e.status) ? "down" : "failed" };
+  }
+}
+
+/** First conversation: share Mayflower's contact card (name + logo) so the chat shows as "Mayflower". */
+async function sendContactCardOnce(userId: string, handle: string) {
+  const claimed = await tx((db) => {
+    const u = db.users.find((x) => x.id === userId) as ({ contactCardSentAt?: string } & object) | undefined;
+    if (!u || u.contactCardSentAt) return false;
+    u.contactCardSentAt = new Date().toISOString();
+    return true;
+  });
+  if (!claimed) return;
+  try {
+    const base = (process.env.APP_URL || "https://mayflower-lac.vercel.app").replace(/\/$/, "");
+    const card = await fetch(`${base}/Mayflower.vcf`).then((r) => (r.ok ? r.arrayBuffer() : null));
+    if (card) await sendAttachment(handle, "Mayflower.vcf", card, "text/vcard");
+  } catch (e) {
+    console.error("[contact card]", e);
   }
 }

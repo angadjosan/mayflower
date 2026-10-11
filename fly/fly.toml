@@ -1,0 +1,14 @@
+# 30-second ticker for Mayflower's research loops. Deploy: fly deploy -c fly/fly.toml
+app = "mayflower-ticker"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  TICK_SECONDS = "30"
+
+# No http service: a single always-on worker machine.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

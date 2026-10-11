@@ -11,7 +11,7 @@ import {
 } from "./polymarket";
 import {
   listHyperliquidMarkets, getHyperliquidMarket, placeHyperliquidOrder, getHyperliquidOrderStatus,
-  getHyperliquidBalance, isHyperliquidId, hyperliquidMode, hyperliquidEnabled,
+  getHyperliquidBalance, isHyperliquidId, hyperliquidMode, hyperliquidEnabled, cancelHyperliquidOrder,
 } from "./hyperliquid";
 
 export { polymarketMode, polymarketEnabled, hyperliquidMode, hyperliquidEnabled };
@@ -48,6 +48,9 @@ export function venueLabel(mode: OrderMode, venue: Venue = "gemini"): string {
 // Public, no auth. GET /v1/prediction-markets/events?status=active&limit=N
 const EVENTS_PATH = "/v1/prediction-markets/events";
 const ORDER_PATH = "/v1/prediction-markets/order";
+// Body {orderId: int64}; 200 {result:"ok"}, 404 not found, 422 can't cancel (e.g. already filled).
+// From the Prediction Markets OpenAPI spec (developer.gemini.com/specs/openapi/prediction-markets.yaml).
+const ORDER_CANCEL_PATH = "/v1/prediction-markets/order/cancel";
 const ACTIVE_ORDERS_PATH = "/v1/prediction-markets/orders/active"; // body {symbol?, limit<=100, offset}
 const ORDER_HISTORY_PATH = "/v1/prediction-markets/orders/history"; // body {status?, symbol?, limit<=1000, offset}
 // Orders fail with TERMS_NOT_ACCEPTED until this is called once per account.
@@ -70,19 +73,23 @@ function nextNonce(): number {
 }
 
 // ---------- auth ----------
-async function privatePost<T>(path: string, body: Record<string, unknown> = {}): Promise<T> {
-  // Master API keys must name a sub-account; account-scoped keys ignore it.
-  const payload = { request: path, nonce: nextNonce(), account: ACCOUNT, ...body };
-  const b64 = Buffer.from(JSON.stringify(payload)).toString("base64");
-  const sig = crypto.createHmac("sha384", API_SECRET!).update(b64).digest("hex");
+async function privatePost<T>(path: string, body: Record<string, unknown> = {}, bearer?: string | null): Promise<T> {
+  // OAuth (the user's own account): Bearer token + payload, no nonce/signature.
+  // Shared API key (Plan B): HMAC-signed payload; master keys must name a sub-account.
+  const payload = bearer ? { request: path, ...body } : { request: path, nonce: nextNonce(), account: ACCOUNT, ...body };
+  // Order ids are int64 (beyond JS number precision): we carry them as strings and emit them as bare JSON integers.
+  const json = JSON.stringify(payload).replace(/"orderId":"(\d+)"/g, '"orderId":$1');
+  const b64 = Buffer.from(json).toString("base64");
+  const auth: Record<string, string> = bearer
+    ? { Authorization: `Bearer ${bearer}` }
+    : { "X-GEMINI-APIKEY": API_KEY!, "X-GEMINI-SIGNATURE": crypto.createHmac("sha384", API_SECRET!).update(b64).digest("hex") };
   const res = await fetch(BASE_URL + path, {
     method: "POST",
     headers: {
       "Content-Type": "text/plain",
       "Content-Length": "0",
-      "X-GEMINI-APIKEY": API_KEY!,
+      ...auth,
       "X-GEMINI-PAYLOAD": b64,
-      "X-GEMINI-SIGNATURE": sig,
       "Cache-Control": "no-cache",
     },
     signal: AbortSignal.timeout(15000),
@@ -305,6 +312,13 @@ function mapStatus(o: any): { status: Order["status"]; filledQuantity: number; a
   return { status, filledQuantity: filled, avgFillPrice: num(o.avgExecutionPrice) };
 }
 
+/** The user's Gemini OAuth access token, or null → use the shared sandbox key (Plan B). */
+async function userToken(userId?: string): Promise<string | null> {
+  if (!userId) return null;
+  const { getUserAccessToken } = await import("./gemini-oauth");
+  return getUserAccessToken(userId).catch(() => null);
+}
+
 export async function placeOrder(o: {
   marketId: string;
   side: Side;
@@ -312,10 +326,13 @@ export async function placeOrder(o: {
   quantity: number;
   limitPrice: number;
   clientOrderId: string;
+  userId?: string;
 }): Promise<OrderResult> {
   const market = await getMarket(o.marketId);
   const venue: Venue = market ? venueOf(market) : venueOfId(o.marketId);
-  const simulate = !market || orderModeFor(market) === "simulated";
+  const token = venue === "gemini" ? await userToken(o.userId) : null;
+  // A linked Gemini account trades for real (sandbox) even when no shared key is configured.
+  const simulate = !market || (token ? market.source === "mock" || Boolean(market.paperOnly) : orderModeFor(market) === "simulated");
 
   if (simulate) {
     if (!market) return { status: "rejected", filledQuantity: 0, mode: "simulated", venue, error: "Unknown market" };
@@ -342,15 +359,16 @@ export async function placeOrder(o: {
     timeInForce: "good-til-cancel",
     clientOrderId: o.clientOrderId,
   };
+  if (!token && !(API_KEY && API_SECRET)) return { status: "error", filledQuantity: 0, mode: "sandbox", venue, error: "No Gemini account linked" };
   try {
     let resp: any;
     try {
-      resp = await privatePost<any>(ORDER_PATH, body);
+      resp = await privatePost<any>(ORDER_PATH, body, token);
     } catch (e) {
       if (!/TERMS_NOT_ACCEPTED/i.test((e as Error).message)) throw e;
       // First order on a fresh account: accept the prediction-market terms once, then retry.
-      await privatePost(TERMS_ACCEPT_PATH);
-      resp = await privatePost<any>(ORDER_PATH, body);
+      await privatePost(TERMS_ACCEPT_PATH, {}, token);
+      resp = await privatePost<any>(ORDER_PATH, body, token);
     }
     const s = mapStatus(resp);
     return { exchangeOrderId: resp.orderId != null ? String(resp.orderId) : undefined, ...s, mode: "sandbox", venue };
@@ -362,13 +380,16 @@ export async function placeOrder(o: {
 export async function getOrderStatus(
   exchangeOrderId: string,
   venue: Venue = "gemini",
+  userId?: string,
 ): Promise<{ status: Order["status"]; filledQuantity: number; avgFillPrice?: number } | undefined> {
   if (venue === "polymarket") return getPolymarketOrderStatus(exchangeOrderId);
   if (venue === "hyperliquid") return getHyperliquidOrderStatus(exchangeOrderId);
-  if (exchangeMode === "simulated" || exchangeOrderId.startsWith("sim-")) return undefined;
+  if (exchangeOrderId.startsWith("sim-")) return undefined;
+  const token = await userToken(userId);
+  if (!token && exchangeMode === "simulated") return undefined;
   for (const [path, body] of [[ACTIVE_ORDERS_PATH, { limit: 100 }], [ORDER_HISTORY_PATH, { limit: 500 }]] as const) {
     try {
-      const resp = await privatePost<any>(path, body);
+      const resp = await privatePost<any>(path, body, token);
       const list: any[] = Array.isArray(resp) ? resp : resp.orders ?? resp.data ?? [];
       const found = list.find((x) => String(x.orderId) === exchangeOrderId);
       if (found) return mapStatus(found);
@@ -379,12 +400,34 @@ export async function getOrderStatus(
   return undefined;
 }
 
-export async function getBalance(venue: Venue = "gemini"): Promise<{ availableUsd: number; mode: OrderMode }> {
+/**
+ * Cancel a working order on its venue. Simulated orders never reach this (execution cancels them locally).
+ * Gemini: the user's OAuth token when linked (same as placeOrder), else the shared sandbox key.
+ */
+export async function cancelExchangeOrder(o: {
+  exchangeOrderId: string; venue: Venue; marketId: string; side: Side; userId?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (o.exchangeOrderId.startsWith("sim-")) return { ok: true };
+  if (o.venue === "hyperliquid") return cancelHyperliquidOrder(o.marketId, o.side, o.exchangeOrderId);
+  if (o.venue === "polymarket") return { ok: false, error: "Cancelling Polymarket orders isn't supported yet." };
+  const token = await userToken(o.userId);
+  if (!token && !(API_KEY && API_SECRET)) return { ok: false, error: "No Gemini account linked" };
+  if (!/^\d+$/.test(o.exchangeOrderId)) return { ok: false, error: `Unexpected Gemini order id ${o.exchangeOrderId}` };
+  try {
+    await privatePost(ORDER_CANCEL_PATH, { orderId: o.exchangeOrderId }, token);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}
+
+export async function getBalance(venue: Venue = "gemini", userId?: string): Promise<{ availableUsd: number; mode: OrderMode }> {
   if (venue === "polymarket") return getPolymarketBalance();
   if (venue === "hyperliquid") return getHyperliquidBalance();
-  if (exchangeMode === "simulated") return { availableUsd: SIMULATED_BALANCE_USD, mode: "simulated" };
+  const token = await userToken(userId);
+  if (!token && exchangeMode === "simulated") return { availableUsd: SIMULATED_BALANCE_USD, mode: "simulated" };
   try {
-    const resp = await privatePost<any[]>(BALANCES_PATH);
+    const resp = await privatePost<any[]>(BALANCES_PATH, {}, token);
     const usd = (resp ?? []).find((b: any) => b.currency === "USD");
     return { availableUsd: num(usd?.available) ?? 0, mode: "sandbox" };
   } catch (e) {

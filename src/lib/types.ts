@@ -20,6 +20,8 @@ export interface User {
   lastCallAt?: string; // last time we rang or texted a call link (cooldown)
   limits: RiskLimits;
   geminiLinked: boolean; // MVP: shared sandbox account; true once user "links"
+  lastAlphaAt?: string; // last unsolicited alpha-scan text (throttle)
+  alphaMarketIds?: string[]; // markets already pitched by the alpha scan (never repeat), most recent last
 }
 
 export interface UserThesis {
@@ -95,6 +97,7 @@ export interface ResearchReport {
   criticNotes?: string; // critic's challenges / resolution risks
   whatWouldChangeMind?: string;
   source: "context.dev" | "mock";
+  pagesRead?: number; // full pages read (not just search snippets)
 }
 
 export type ProposalStatus = "pending" | "approved" | "rejected" | "expired" | "executed" | "failed";
@@ -125,6 +128,11 @@ export interface TradeProposal {
   createdAt: string;
   expiresAt: string;
   version: number;
+  loop?: "alpha" | "pending" | "thesis"; // research loop that created this proposal
+  lastResearchedAt?: string; // pending-proposal loop: last re-research
+  statusReason?: string; // why it was expired/withdrawn/superseded
+  supersedesId?: string; // previous version of this idea
+  supersededById?: string; // newer version that replaced this one
 }
 
 export interface Order {
@@ -166,6 +174,8 @@ export interface Position {
   takeProfitPrice?: number; // alert when side price rises to this
   openedAt: string;
   updatedAt: string;
+  thesisCheckedAt?: string; // thesis-watch loop: last news check
+  thesisStatus?: "intact" | "weakened" | "broken"; // last judged status vs the original thesis
 }
 
 export interface ChatMessage {
@@ -321,4 +331,14 @@ export interface LoginToken {
   next?: string;
   expiresAt: string;
   usedAt?: string;
+}
+
+// ---------- Background research loops ----------
+
+export interface LoopState {
+  lastRunAt?: string; // last completed run
+  startedAt?: string; // start of the current/last run
+  running?: boolean;
+  lastError?: string;
+  lastResult?: unknown; // small summary of the last run
 }

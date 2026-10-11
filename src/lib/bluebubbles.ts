@@ -166,3 +166,28 @@ async function request(path: string, init: RequestInit, timeoutMs: number, chatG
     return err?.name === "TimeoutError" || err?.cause?.name === "TimeoutError" ? "timeout" : "error";
   }
 }
+
+/** Send a file (e.g. the Mayflower contact card) to a 1:1 chat. Same guid fallback as sendIMessage. */
+export async function sendAttachment(handle: string, name: string, bytes: ArrayBuffer, type: string): Promise<boolean> {
+  if (!bbEnabled || !handle) return false;
+  for (const chatGuid of [`any;-;${handle}`, `iMessage;-;${handle}`]) {
+    try {
+      const form = new FormData();
+      form.set("chatGuid", chatGuid);
+      form.set("tempGuid", `temp-${crypto.randomUUID()}`);
+      form.set("name", name);
+      form.set("method", "apple-script");
+      form.set("attachment", new Blob([bytes], { type }), name);
+      const res = await fetch(`${URL_}/api/v1/message/attachment?password=${encodeURIComponent(PASSWORD!)}`, {
+        method: "POST", body: form, signal: AbortSignal.timeout(60_000),
+      });
+      const env = (await res.json().catch(() => ({}))) as { status?: number; error?: unknown };
+      if (res.ok && !env.error) return true;
+      console.error("[bluebubbles] attachment failed", chatGuid.split(";")[0], res.status, JSON.stringify(env).slice(0, 200));
+    } catch (e) {
+      console.error("[bluebubbles] attachment error", e);
+      if ((e as Error)?.name === "TimeoutError") return false; // may have delivered; don't double-send
+    }
+  }
+  return false;
+}

@@ -58,12 +58,12 @@ export default function Connections() {
 
   return (
     <Card title="Connected context">
-      <p className="mb-3 text-xs text-stone-500">Optional. Used only as context for ideas — never as permission to trade.</p>
-      {error && <p className="mb-2 text-xs text-rose-600">{error}</p>}
+      <p className="mb-3 text-xs text-muted">Optional. Used only as context for ideas — never as permission to trade.</p>
+      {error && <p className="mb-2 text-xs text-down">{error}</p>}
       {!data ? (
-        <p className="text-sm text-stone-400">Loading…</p>
+        <p className="text-sm text-subtle">Loading…</p>
       ) : (
-        <ul className="divide-y divide-stone-100">
+        <ul className="divide-y divide-line">
           {PROVIDERS.map((p) => {
             const s = data.sources.find((x) => x.provider === p.id);
             const configured = data.available[p.id];
@@ -73,19 +73,19 @@ export default function Connections() {
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-stone-900">{p.label}</span>
+                      <span className="text-sm font-medium text-fg">{p.label}</span>
                       {s ? (
                         s.status === "error" ? <Badge tone="warn">Error</Badge> : <Badge tone="good">Connected</Badge>
                       ) : !configured ? (
                         <Badge>Not configured</Badge>
                       ) : null}
                     </div>
-                    <div className="mt-0.5 truncate text-xs text-stone-500">
+                    <div className="mt-0.5 truncate text-xs text-muted">
                       {s
                         ? [s.accountLabel, s.lastSyncedAt ? `synced ${time(s.lastSyncedAt)}` : "not synced yet"].filter(Boolean).join(" · ")
                         : p.blurb}
                     </div>
-                    {s?.lastError && <div className="mt-0.5 text-xs text-rose-600">{s.lastError}</div>}
+                    {s?.lastError && <div className="mt-0.5 text-xs text-down">{s.lastError}</div>}
                   </div>
                   <div className="flex items-center gap-1.5">
                     {s ? (
@@ -97,8 +97,8 @@ export default function Connections() {
                       <a
                         href={configured ? `/api/connect/${p.id}/start` : undefined}
                         aria-disabled={!configured}
-                        className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors ${
-                          configured ? "border-stone-200 bg-white text-stone-700 hover:bg-stone-50" : "pointer-events-none border-stone-200 bg-white text-stone-400 opacity-50"
+                        className={`inline-flex h-8 items-center rounded-full border px-3 text-[13px] font-medium transition-all ${
+                          configured ? "border-transparent bg-ink text-ink-fg hover:opacity-90 active:scale-[0.98]" : "pointer-events-none border-line text-subtle opacity-60"
                         }`}
                       >
                         Connect
@@ -112,14 +112,14 @@ export default function Connections() {
                     <button
                       type="button"
                       onClick={() => setOpen((o) => ({ ...o, [p.id]: !o[p.id] }))}
-                      className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+                      className="text-xs font-medium text-accent hover:text-accent"
                     >
                       {open[p.id] ? "▾" : "▸"} What Mayflower learned ({learned})
                     </button>
                     {open[p.id] && (
-                      <div className="mt-2 space-y-2 rounded-xl bg-stone-50 p-3">
+                      <div className="animate-rise mt-2 space-y-2 rounded-2xl bg-sunken p-3">
                         {learned === 0 ? (
-                          <p className="text-xs text-stone-400">Nothing yet. Try Sync now.</p>
+                          <p className="text-xs text-subtle">Nothing yet. Try Sync now.</p>
                         ) : (
                           <>
                             {s.theses.length > 0 && (
@@ -127,19 +127,19 @@ export default function Connections() {
                                 {s.theses.map((t) => (
                                   <li key={t.id} className="text-sm">
                                     <span className="font-medium">{t.topic}</span>
-                                    {t.belief && <span className="text-stone-600">: {t.belief}</span>}{" "}
-                                    <span className="text-xs text-stone-400">({Math.round(t.confidence * 100)}%)</span>
+                                    {t.belief && <span className="text-fg-2">: {t.belief}</span>}{" "}
+                                    <span className="text-xs text-subtle">({Math.round(t.confidence * 100)}%)</span>
                                   </li>
                                 ))}
                               </ul>
                             )}
                             {s.contextItems.length > 0 && (
-                              <ul className="space-y-1.5 border-t border-stone-200 pt-2">
+                              <ul className="space-y-1.5 border-t border-line pt-2">
                                 {s.contextItems.map((c) => (
-                                  <li key={c.id} className="text-xs text-stone-600">
-                                    <div className="font-medium text-stone-700">
+                                  <li key={c.id} className="text-xs text-fg-2">
+                                    <div className="font-medium text-fg-2">
                                       {c.url ? (
-                                        <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline decoration-indigo-200 underline-offset-2 hover:decoration-indigo-600">
+                                        <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-accent underline decoration-line-strong underline-offset-2 hover:decoration-accent">
                                           {c.title}
                                         </a>
                                       ) : (

@@ -1,6 +1,7 @@
 "use client";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { Logo, MessageIcon, smsHref } from "@/components/ui";
 
 function LoginForm() {
   const params = useSearchParams();
@@ -33,48 +34,55 @@ function LoginForm() {
   };
 
   return (
-    <div className="w-full max-w-sm space-y-6 rounded-2xl border border-stone-200 bg-white p-6">
-      <div className="flex items-center gap-2.5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-sm font-bold text-white">M</div>
-        <h1 className="text-xl font-semibold tracking-tight">Sign in to Mayflower</h1>
+    <div className="animate-rise w-full max-w-sm">
+      <div className="flex flex-col items-center text-center">
+        <Logo size={48} />
+        <h1 className="mt-5 text-2xl font-semibold tracking-tight text-fg">Sign in to Mayflower</h1>
+        <p className="mt-1.5 text-sm text-muted">Your prediction-market trader, in iMessage.</p>
       </div>
 
-      {expired && !sent && (
-        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">That link expired or was already used. Request a new one.</p>
-      )}
+      <div className="mt-8 rounded-2xl border border-line bg-surface p-6 shadow-card">
+        {expired && !sent && (
+          <p className="mb-4 rounded-xl bg-warn-soft px-3 py-2 text-[13px] text-warn">That link expired or was already used. Request a new one.</p>
+        )}
 
-      {sent ? (
-        <div className="space-y-2">
-          <p className="text-sm font-medium">We sent a link to your Messages.</p>
-          <p className="text-sm text-stone-500">{sent}</p>
-          <button className="text-sm text-indigo-600 hover:underline" onClick={() => setSent(null)}>Use a different handle</button>
-        </div>
-      ) : (
-        <form onSubmit={submit} className="space-y-3">
-          <label className="block text-sm text-stone-600" htmlFor="handle">Phone number, Apple ID, or Discord handle</label>
-          <input
-            id="handle"
-            className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm outline-none focus:border-indigo-500"
-            placeholder="+1 555 123 4567, you@icloud.com, or discord:yourname"
-            value={handle}
-            onChange={(e) => setHandle(e.target.value)}
-            autoFocus
-            autoComplete="username"
-          />
-          {error && <p className="text-sm text-rose-600">{error}</p>}
-          <button
-            type="submit"
-            disabled={busy || !handle.trim()}
-            className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
-            {busy ? "Sending..." : "Text me a sign-in link"}
-          </button>
-        </form>
-      )}
+        {sent ? (
+          <div className="space-y-2 text-center">
+            <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-accent-soft text-accent">
+              <MessageIcon className="h-5 w-5" />
+            </div>
+            <p className="pt-2 text-[15px] font-medium text-fg">Check your Messages</p>
+            <p className="text-sm text-muted">{sent}</p>
+            <button className="pt-2 text-[13px] text-muted underline-offset-2 hover:text-fg hover:underline" onClick={() => setSent(null)}>Use a different handle</button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            <label className="block text-[13px] text-muted" htmlFor="handle">Phone number, Apple ID, or Discord handle</label>
+            <input
+              id="handle"
+              className="h-11 w-full rounded-xl border border-line-strong bg-surface px-3.5 text-[15px] text-fg outline-none transition placeholder:text-subtle focus:border-accent"
+              placeholder="+1 555 123 4567"
+              value={handle}
+              onChange={(e) => setHandle(e.target.value)}
+              autoFocus
+              autoComplete="username"
+            />
+            {error && <p className="text-[13px] text-down">{error}</p>}
+            <button
+              type="submit"
+              disabled={busy || !handle.trim()}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-full bg-ink text-[15px] font-medium text-ink-fg transition-opacity hover:opacity-90 active:scale-[0.99] disabled:opacity-40"
+            >
+              <MessageIcon className="h-4 w-4" />
+              {busy ? "Sending…" : "Text me a sign-in link"}
+            </button>
+          </form>
+        )}
+      </div>
 
-      <p className="text-xs text-stone-500">
-        No passwords. Text Mayflower first if you haven&apos;t — your account is created from your messages. You can also text
-        &quot;dashboard&quot; to Mayflower to get a link.
+      <p className="mt-6 text-center text-xs leading-relaxed text-muted">
+        No passwords. New here? <a href={smsHref()} className="text-fg-2 underline decoration-line-strong underline-offset-2 hover:text-fg">Text Mayflower</a> first;
+        your account is created from your messages. You can also text &ldquo;dashboard&rdquo; for a link.
       </p>
     </div>
   );
@@ -82,7 +90,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-stone-50 p-4">
+    <main className="flex min-h-screen items-center justify-center bg-bg px-4 py-12">
       <Suspense>
         <LoginForm />
       </Suspense>
