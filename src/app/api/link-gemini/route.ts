@@ -12,12 +12,12 @@ export async function POST() {
   if (geminiOAuthConfigured) return NextResponse.json({ redirect: "/api/gemini-oauth/start" });
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
-  getOrCreateUser({ id: userId });
-  const user = tx((db) => {
+  await getOrCreateUser({ id: userId });
+  const user = await tx((db) => {
     const u = db.users.find((x) => x.id === userId)!;
     u.geminiLinked = true;
     return u;
   });
-  audit({ userId, actor: "user", action: "gemini_linked", detail: { account: "Sandbox – shared account" } });
+  await audit({ userId, actor: "user", action: "gemini_linked", detail: { account: "Sandbox – shared account" } });
   return NextResponse.json({ user, account: "Sandbox – shared account" });
 }

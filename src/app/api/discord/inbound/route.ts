@@ -18,11 +18,11 @@ interface DiscordInbound {
 }
 
 /** Resolve the Mayflower user for a Discord author, naming them on first contact. */
-function discordUser(authorId: string, authorName?: string) {
-  const user = getOrCreateUser({ handle: `discord:${authorId}` });
+async function discordUser(authorId: string, authorName?: string) {
+  const user = await getOrCreateUser({ handle: `discord:${authorId}` });
   const name = authorName?.trim();
   if (!user.name && name) {
-    tx((db) => {
+    await tx((db) => {
       const u = db.users.find((x) => x.id === user.id);
       if (u && !u.name) u.name = name.slice(0, 64);
     });
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   }
 
   if (kind === "channel") {
-    discordUser(authorId, body.authorName);
+    await discordUser(authorId, body.authorName);
     try {
       await handleGroupMessage(`discord:${channelId}`, `discord:${authorId}`, body.mentioned ? `Mayflower ${text}` : text);
     } catch (e) {
@@ -53,9 +53,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, group: true });
   }
 
-  const user = discordUser(authorId, body.authorName);
+  const user = await discordUser(authorId, body.authorName);
   // ChatMessage.channel has no "discord" value; Discord DMs are stored as "imessage" (messaging surface).
-  storeMessage(user.id, "user", text, "imessage");
+  await storeMessage(user.id, "user", text, "imessage");
   let reply: string;
   try {
     reply = await handleMessage(user.id, text, "imessage");

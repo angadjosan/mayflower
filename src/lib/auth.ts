@@ -19,10 +19,10 @@ export function safeNext(next?: string | null): string | undefined {
 }
 
 /** Create a one-time login link for a user. Only the sha256 of the token is stored. */
-export function createLoginLink(userId: string, next?: string): string {
+export async function createLoginLink(userId: string, next?: string): Promise<string> {
   const token = crypto.randomBytes(32).toString("base64url");
   const t = Date.now();
-  tx((db) => {
+  await tx((db) => {
     // prune expired/used tokens while we're here
     db.loginTokens = db.loginTokens.filter((x) => !x.usedAt && Date.parse(x.expiresAt) > t);
     db.loginTokens.push({
@@ -34,10 +34,10 @@ export function createLoginLink(userId: string, next?: string): string {
 }
 
 /** Consume a login token (one-time). Returns the user id and stored redirect, or null if invalid/expired/used. */
-export function consumeLoginToken(token: string): { userId: string; next?: string } | null {
+export async function consumeLoginToken(token: string): Promise<{ userId: string; next?: string } | null> {
   if (!token) return null;
   const h = hash(token);
-  return tx((db) => {
+  return await tx((db) => {
     const lt = db.loginTokens.find((x) => x.tokenHash === h);
     if (!lt || lt.usedAt || Date.parse(lt.expiresAt) <= Date.now()) return null;
     if (!db.users.some((u) => u.id === lt.userId)) return null;
@@ -61,20 +61,20 @@ export function normalizeHandle(raw: string): string {
   return s.toLowerCase();
 }
 
-export function findUserByHandle(handle: string) {
+export async function findUserByHandle(handle: string) {
   const want = normalizeHandle(handle);
   if (!want) return undefined;
-  return load().users.find((u) => u.handle && normalizeHandle(u.handle) === want);
+  return (await load()).users.find((u) => u.handle && normalizeHandle(u.handle) === want);
 }
 
 /** Look up the account by handle and DM it a login link. Always returns the same generic message (no account enumeration). */
 export async function requestLogin(handle: string, next?: string): Promise<{ ok: true; message: string }> {
-  const user = findUserByHandle(handle || "");
+  const user = await findUserByHandle(handle || "");
   if (user) {
     try {
-      const link = createLoginLink(user.id, next);
+      const link = await createLoginLink(user.id, next);
       await sendToUser(user.id, `Your Mayflower dashboard link (expires in 15 min): ${link}`);
-      audit({ userId: user.id, actor: "system", action: "auth.login_link_sent" });
+      await audit({ userId: user.id, actor: "system", action: "auth.login_link_sent" });
     } catch (e) {
       console.error("requestLogin failed", e);
     }

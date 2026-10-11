@@ -15,8 +15,8 @@ export async function GET() {
   // Identity comes only from the signed session cookie (demo user when signed out); no ?userId= override.
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
-  const user = getOrCreateUser({ id: userId });
-  const db = load();
+  const user = await getOrCreateUser({ id: userId });
+  const db = await load();
   const mine = <T extends { userId?: string }>(xs: T[]) => xs.filter((x) => x.userId === userId);
   const researchById = new Map(db.research.map((r) => [r.id, r]));
   const proposals = mine(db.proposals)

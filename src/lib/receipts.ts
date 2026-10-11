@@ -60,8 +60,8 @@ async function broadcast(hash: string): Promise<Hex> {
   return enqueue(() => wallet.sendTransaction({ to: account.address, value: BigInt(0), data: receiptCalldata(hash) }));
 }
 
-function update(receiptId: string, patch: Partial<AuditReceipt>) {
-  tx((db) => {
+async function update(receiptId: string, patch: Partial<AuditReceipt>) {
+  await tx((db) => {
     const r = db.auditReceipts.find((x) => x.id === receiptId);
     if (r) Object.assign(r, patch);
   });
@@ -79,23 +79,23 @@ export async function commitReceipt(a: {
     id: id("rcpt_"), userId: a.userId, kind: a.kind, ...(a.ref ? { ref: a.ref } : {}),
     hash, chain: "bsc-testnet", status: "pending", createdAt: now(),
   };
-  tx((db) => { db.auditReceipts.push(receipt); });
+  await tx((db) => { db.auditReceipts.push(receipt); });
   // Keep the canonical record offchain so the hash can be re-derived later (verifyReceipt).
-  audit({ userId: a.userId, actor: "system", action: RECORD_ACTION, ref: receipt.id, detail: { kind: a.kind, record: a.record } });
+  await audit({ userId: a.userId, actor: "system", action: RECORD_ACTION, ref: receipt.id, detail: { kind: a.kind, record: a.record } });
 
   if (!receiptsOnchainEnabled()) {
-    update(receipt.id, { status: "disabled" });
+    await update(receipt.id, { status: "disabled" });
     return { ...receipt, status: "disabled" };
   }
   try {
     const txHash = await broadcast(hash);
-    update(receipt.id, { txHash, status: "committed" });
-    audit({ userId: a.userId, actor: "system", action: "receipt.committed", ref: receipt.id, detail: { txHash, hash } });
+    await update(receipt.id, { txHash, status: "committed" });
+    await audit({ userId: a.userId, actor: "system", action: "receipt.committed", ref: receipt.id, detail: { txHash, hash } });
     return { ...receipt, txHash, status: "committed" };
   } catch (e) {
     const error = (e instanceof Error ? e.message : String(e)).split("\n")[0].slice(0, 300);
-    update(receipt.id, { status: "failed", error });
-    audit({ userId: a.userId, actor: "system", action: "receipt.failed", ref: receipt.id, detail: { error } });
+    await update(receipt.id, { status: "failed", error });
+    await audit({ userId: a.userId, actor: "system", action: "receipt.failed", ref: receipt.id, detail: { error } });
     return { ...receipt, status: "failed", error };
   }
 }
@@ -114,8 +114,8 @@ export function approvalRecord(p: TradeProposal, approvedAt: string) {
   };
 }
 
-export function policyRecord(userId: string) {
-  const user = load().users.find((u) => u.id === userId);
+export async function policyRecord(userId: string) {
+  const user = (await load()).users.find((u) => u.id === userId);
   if (!user) throw new Error("User not found");
   const L = user.limits;
   return {
@@ -135,8 +135,8 @@ export function policyRecord(userId: string) {
   };
 }
 
-export function commitPolicy(userId: string) {
-  return commitReceipt({ userId, kind: "policy", record: policyRecord(userId) });
+export async function commitPolicy(userId: string) {
+  return commitReceipt({ userId, kind: "policy", record: await policyRecord(userId) });
 }
 
 /**
@@ -145,7 +145,7 @@ export function commitPolicy(userId: string) {
  */
 export async function onApproved(proposalId: string): Promise<AuditReceipt | undefined> {
   try {
-    const db = load();
+    const db = await load();
     const p = db.proposals.find((x) => x.id === proposalId);
     if (!p || !["approved", "executed", "failed"].includes(p.status)) return undefined;
     if (db.auditReceipts.some((r) => r.kind === "approval" && r.ref === proposalId)) return undefined;
@@ -157,8 +157,8 @@ export async function onApproved(proposalId: string): Promise<AuditReceipt | und
   }
 }
 
-export function listReceipts(userId: string): AuditReceipt[] {
-  return load()
+export async function listReceipts(userId: string): Promise<AuditReceipt[]> {
+  return (await load())
     .auditReceipts.filter((r) => r.userId === userId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
@@ -167,7 +167,7 @@ export function listReceipts(userId: string): AuditReceipt[] {
 export async function verifyReceipt(receiptId: string): Promise<{
   ok: boolean; hashMatches: boolean; onchainMatches?: boolean; hash?: string; recomputed?: string; error?: string;
 }> {
-  const db = load();
+  const db = await load();
   const r = db.auditReceipts.find((x) => x.id === receiptId);
   if (!r) return { ok: false, hashMatches: false, error: "Receipt not found." };
   const ev = db.audit.find((e) => e.action === RECORD_ACTION && e.ref === receiptId);

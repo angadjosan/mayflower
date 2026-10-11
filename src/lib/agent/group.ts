@@ -37,9 +37,9 @@ export function displayName(u?: User) {
 
 /** Handle one inbound group-chat message. Posts any reply into the group itself. */
 export async function handleGroupMessage(chatGuid: string, senderHandle: string, text: string): Promise<void> {
-  const sender = getOrCreateUser({ handle: senderHandle });
-  const group = ensureGroup(chatGuid, sender.id);
-  storeMessage(sender.id, "user", text, "imessage", group.id);
+  const sender = await getOrCreateUser({ handle: senderHandle });
+  const group = await ensureGroup(chatGuid, sender.id);
+  await storeMessage(sender.id, "user", text, "imessage", group.id);
 
   const reply = await route(group, sender, text);
   if (reply) await postToGroup(group, reply);
@@ -49,8 +49,8 @@ async function route(group: Group, sender: User, text: string): Promise<string |
   const t = text.trim();
   const addressed = /\b(mayflower|mf)\b/i.test(t) || t.startsWith("@");
   const lower = t.toLowerCase();
-  const contest = activeContest(group.id);
-  const pick = openPick(group.id);
+  const contest = await activeContest(group.id);
+  const pick = await openPick(group.id);
 
   // Short replies that don't need the agent's name.
   if (pick && /^(i'?m in|in|count me in|me too|i'?m down|down)\b/i.test(lower)) return joinPick(group, pick, sender);
@@ -68,7 +68,7 @@ async function route(group: Group, sender: User, text: string): Promise<string |
 
 // ---------- groups ----------
 
-function ensureGroup(chatGuid: string, userId: string): Group {
+async function ensureGroup(chatGuid: string, userId: string): Promise<Group> {
   return tx((db) => {
     let g = db.groups.find((x) => x.chatGuid === chatGuid);
     if (!g) {
@@ -82,27 +82,27 @@ function ensureGroup(chatGuid: string, userId: string): Group {
 }
 
 async function postToGroup(group: Group, text: string) {
-  storeMessage(group.memberUserIds[0] ?? "system", "agent", text, "imessage", group.id);
+  await storeMessage(group.memberUserIds[0] ?? "system", "agent", text, "imessage", group.id);
   await sendToChat(group.chatGuid, text);
 }
 
 /** DM a member privately (approval links never go in the group). */
 async function dm(user: User, text: string) {
-  storeMessage(user.id, "agent", text, user.handle ? "imessage" : "web");
+  await storeMessage(user.id, "agent", text, user.handle ? "imessage" : "web");
   if (user.handle) await sendDirect(user.handle, text);
 }
 
-function activeContest(groupId: string): Contest | undefined {
-  return load().contests.filter((c) => c.groupId === groupId && c.status === "active").at(-1);
+async function activeContest(groupId: string): Promise<Contest | undefined> {
+  return (await load()).contests.filter((c) => c.groupId === groupId && c.status === "active").at(-1);
 }
 
-function openPick(groupId: string) {
+async function openPick(groupId: string) {
   const t = Date.now();
-  return load().groupPicks.filter((p) => p.groupId === groupId && Date.parse(p.expiresAt) > t).at(-1);
+  return (await load()).groupPicks.filter((p) => p.groupId === groupId && Date.parse(p.expiresAt) > t).at(-1);
 }
 
-function recentChat(groupId: string, n = 50) {
-  const db = load();
+async function recentChat(groupId: string, n = 50) {
+  const db = await load();
   return db.messages
     .filter((m) => m.groupId === groupId)
     .slice(-n)
@@ -113,10 +113,10 @@ function recentChat(groupId: string, n = 50) {
 // ---------- per-person proposals ----------
 
 /** Fixed-stake proposal for one member. Stake is capped by that member's own per-trade limit. */
-function proposeForUser(a: {
+async function proposeForUser(a: {
   user: User; market: Market; research: ResearchReport; side: Side; stakeUsd: number;
   groupId: string; contestId?: string; thesis: string;
-}): { proposal?: TradeProposal; error?: string } {
+}): Promise<{ proposal?: TradeProposal; error?: string }> {
   const price = a.side === "YES" ? yesAsk(a.market) : noAsk(a.market);
   if (!(price > 0 && price < 1)) return { error: "that market has no usable price right now" };
   const stake = Math.min(a.stakeUsd, a.user.limits.maxPerTradeUsd);
@@ -136,8 +136,8 @@ function proposeForUser(a: {
     status: "pending", approvalToken: crypto.randomBytes(16).toString("hex"),
     createdAt: now(), expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(), version: 1,
   };
-  tx((db) => { db.proposals.push(proposal); });
-  audit({ userId: a.user.id, actor: "agent", action: "group.proposal.create", ref: proposal.id, detail: { groupId: a.groupId, contestId: a.contestId, marketId: a.market.id, side: a.side, costUsd } });
+  await tx((db) => { db.proposals.push(proposal); });
+  await audit({ userId: a.user.id, actor: "agent", action: "group.proposal.create", ref: proposal.id, detail: { groupId: a.groupId, contestId: a.contestId, marketId: a.market.id, side: a.side, costUsd } });
   return { proposal };
 }
 
@@ -162,15 +162,15 @@ function parseContest(text: string) {
 }
 
 async function startContest(group: Group, sender: User, text: string) {
-  const existing = activeContest(group.id);
+  const existing = await activeContest(group.id);
   if (existing) return `There's already a contest running ($${existing.stakeUsd} each, reward: ${existing.reward}). Say "Mayflower leaderboard" or "Mayflower end contest".`;
   const { stake, endsAt, reward } = parseContest(text);
   const c: Contest = {
     id: id("con_"), groupId: group.id, stakeUsd: stake, reward, endsAt, status: "active",
     createdByUserId: sender.id, createdAt: now(),
   };
-  tx((db) => { db.contests.push(c); });
-  audit({ userId: sender.id, actor: "user", action: "contest.start", ref: c.id, detail: { groupId: group.id, stake, endsAt, reward } });
+  await tx((db) => { db.contests.push(c); });
+  await audit({ userId: sender.id, actor: "user", action: "contest.start", ref: c.id, detail: { groupId: group.id, stake, endsAt, reward } });
   return [
     `Contest on 🏁 $${stake} each, best % return wins. Reward: ${reward}.${endsAt ? ` Scoring ${new Date(endsAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}.` : " No end date — say \"Mayflower end contest\" to score it."}`,
     `Everyone pitch your idea: "my pick: BTC stays above 80k". I'll find the closest real market and DM you a private approval link.`,
@@ -210,7 +210,7 @@ Return JSON {"marketId": string | null, "side": "YES" | "NO", "reason": one shor
 }
 
 async function pitch(group: Group, contest: Contest, sender: User, text: string) {
-  const db = load();
+  const db = await load();
   const prior = db.contestEntries.find((e) => e.contestId === contest.id && e.userId === sender.id);
   const priorProposal = prior && db.proposals.find((p) => p.id === prior.proposalId);
   if (priorProposal && ["approved", "executed"].includes(priorProposal.status)) {
@@ -222,13 +222,13 @@ async function pitch(group: Group, contest: Contest, sender: User, text: string)
   if (!match) return `${displayName(sender)}, I couldn't find a live market for "${pitchText}". Try something more specific, or ask "Mayflower what can we bet on?"`;
 
   const research = await researchAndForecast(match.market, sender.id);
-  const { proposal, error } = proposeForUser({
+  const { proposal, error } = await proposeForUser({
     user: sender, market: match.market, research, side: match.side, stakeUsd: contest.stakeUsd,
     groupId: group.id, contestId: contest.id, thesis: `${displayName(sender)}'s pitch: "${pitchText}". ${match.reason}`,
   });
   if (!proposal) return `${displayName(sender)}, ${error}. Pitch another idea?`;
 
-  tx((d) => {
+  await tx((d) => {
     if (prior) {
       const old = d.proposals.find((p) => p.id === prior.proposalId);
       if (old && old.status === "pending") old.status = "rejected";
@@ -253,7 +253,7 @@ const STATUS_LABEL: Record<string, string> = {
 interface Standing { user: User; pitch: string; market?: Market; side?: Side; status: string; ret: number | null }
 
 async function standings(contest: Contest): Promise<Standing[]> {
-  const db = load();
+  const db = await load();
   const rows: Standing[] = [];
   for (const e of db.contestEntries.filter((x) => x.contestId === contest.id)) {
     const user = db.users.find((u) => u.id === e.userId)!;
@@ -273,7 +273,7 @@ async function standings(contest: Contest): Promise<Standing[]> {
 }
 
 async function leaderboard(group: Group) {
-  const contest = activeContest(group.id) ?? load().contests.filter((c) => c.groupId === group.id).at(-1);
+  const contest = await activeContest(group.id) ?? (await load()).contests.filter((c) => c.groupId === group.id).at(-1);
   if (!contest) return `No contest yet. Start one: "Mayflower start a contest, $10 each, 1 week, loser buys dinner".`;
   const rows = await standings(contest);
   if (!rows.length) return `No picks yet. Pitch with "my pick: …".`;
@@ -285,15 +285,15 @@ async function leaderboard(group: Group) {
 
 /** Score the active contest at current prices and announce the winner. Positions stay open. */
 async function finalizeContest(group: Group, manual = false): Promise<string> {
-  const contest = activeContest(group.id);
+  const contest = await activeContest(group.id);
   if (!contest) return manual ? "There's no active contest to end." : "";
   const rows = (await standings(contest)).filter((r) => r.ret != null);
   const winner = rows[0];
-  tx((db) => {
+  await tx((db) => {
     const c = db.contests.find((x) => x.id === contest.id)!;
     c.status = "ended"; c.winnerUserId = winner?.user.id;
   });
-  audit({ actor: manual ? "user" : "system", action: "contest.end", ref: contest.id, detail: { winner: winner?.user.id, ret: winner?.ret } });
+  await audit({ actor: manual ? "user" : "system", action: "contest.end", ref: contest.id, detail: { winner: winner?.user.id, ret: winner?.ret } });
   if (!winner) return `Contest closed — nobody had an approved trade, so no winner. Start another anytime.`;
   const board = rows.map((r, i) => `${i + 1}. ${displayName(r.user)} ${pct(r.ret!)}`).join("\n");
   return `🏆 ${displayName(winner.user)} wins with ${pct(winner.ret!)}!\n${board}\nReward: ${contest.reward}. Positions stay open — I'll keep watching them.`;
@@ -301,7 +301,7 @@ async function finalizeContest(group: Group, manual = false): Promise<string> {
 
 /** Called by the monitor cron: score any contest whose end time has passed. */
 export async function finalizeDueContests(): Promise<number> {
-  const db = load();
+  const db = await load();
   const due = db.contests.filter((c) => c.status === "active" && c.endsAt && Date.parse(c.endsAt) <= Date.now());
   for (const c of due) {
     const g = db.groups.find((x) => x.id === c.groupId);
@@ -317,7 +317,7 @@ export async function finalizeDueContests(): Promise<number> {
 interface ChatTopic { suggest: boolean; query?: string; side?: Side; marketId?: string; rationale?: string }
 
 async function pickFromChat(group: Group, force: boolean): Promise<{ market: Market; side?: Side; rationale: string } | null> {
-  const chat = recentChat(group.id);
+  const chat = await recentChat(group.id);
   const markets = (await listMarkets()).filter((m) => m.status === "open" || m.status === "unknown").slice(0, 80);
   if (llmEnabled) {
     try {
@@ -343,7 +343,7 @@ Return JSON {"suggest": boolean, "marketId": string, "side": "YES"|"NO" (the sid
 
 async function groupPick(group: Group, force: boolean): Promise<string | null> {
   const found = await pickFromChat(group, force);
-  tx((db) => {
+  await tx((db) => {
     const g = db.groups.find((x) => x.id === group.id)!;
     g.msgsSinceSuggestion = 0; g.lastSuggestionAt = now();
   });
@@ -354,14 +354,14 @@ async function groupPick(group: Group, force: boolean): Promise<string | null> {
   const side: Side = found.side ?? (p - yesAsk(found.market) >= (1 - p) - noAsk(found.market) ? "YES" : "NO");
   const price = side === "YES" ? yesAsk(found.market) : noAsk(found.market);
   const pSide = side === "YES" ? p : 1 - p;
-  const stakeUsd = activeContest(group.id)?.stakeUsd ?? DEFAULT_STAKE;
-  tx((db) => {
+  const stakeUsd = (await activeContest(group.id))?.stakeUsd ?? DEFAULT_STAKE;
+  await tx((db) => {
     db.groupPicks.push({
       id: id("pick_"), groupId: group.id, market: found.market, researchId: research.id, side, price, stakeUsd,
       rationale: found.rationale, joinedUserIds: [], createdAt: now(), expiresAt: new Date(Date.now() + PICK_TTL_MS).toISOString(),
     });
   });
-  audit({ actor: "agent", action: "group.pick", detail: { groupId: group.id, marketId: found.market.id, side, forced: force } });
+  await audit({ actor: "agent", action: "group.pick", detail: { groupId: group.id, marketId: found.market.id, side, forced: force } });
   const disagree = pSide < price - 0.03 ? ` Heads up: my own estimate is only ${Math.round(pSide * 100)}%, below the price.` : "";
   return [
     `${force ? "Group idea" : "Overheard a trade 👀"}: ${side} on ${marketLabel(found.market)} @ ${Math.round(price * 100)}¢.`,
@@ -371,26 +371,26 @@ async function groupPick(group: Group, force: boolean): Promise<string | null> {
   ].join("\n");
 }
 
-async function joinPick(group: Group, pick: NonNullable<ReturnType<typeof openPick>>, sender: User) {
+async function joinPick(group: Group, pick: NonNullable<Awaited<ReturnType<typeof openPick>>>, sender: User) {
   if (pick.joinedUserIds.includes(sender.id)) return null;
-  const research = load().research.find((r) => r.id === pick.researchId);
+  const research = (await load()).research.find((r) => r.id === pick.researchId);
   if (!research) return null;
   const fresh = (await getMarket(pick.market.id)) ?? pick.market;
-  const { proposal, error } = proposeForUser({
+  const { proposal, error } = await proposeForUser({
     user: sender, market: fresh, research, side: pick.side, stakeUsd: pick.stakeUsd, groupId: group.id,
     thesis: `Group pick: ${pick.rationale} ${research.summary}`,
   });
   if (!proposal) return `${displayName(sender)}, ${error}.`;
-  tx((db) => { db.groupPicks.find((x) => x.id === pick.id)!.joinedUserIds.push(sender.id); });
+  await tx((db) => { db.groupPicks.find((x) => x.id === pick.id)!.joinedUserIds.push(sender.id); });
   await dm(sender, approvalDM(proposal, `You're in on the group pick:`));
   return `${displayName(sender)} is in ✅ (approval link sent privately)`;
 }
 
 /** Always-listening: occasionally surface a trade when the group is debating something tradeable. */
 async function maybeSuggest(group: Group): Promise<string | null> {
-  const g = load().groups.find((x) => x.id === group.id)!;
+  const g = (await load()).groups.find((x) => x.id === group.id)!;
   const since = g.lastSuggestionAt ? Date.now() - Date.parse(g.lastSuggestionAt) : Infinity;
-  if (g.msgsSinceSuggestion < SUGGEST_EVERY_N_MSGS || since < SUGGEST_MIN_GAP_MS || openPick(group.id)) return null;
+  if (g.msgsSinceSuggestion < SUGGEST_EVERY_N_MSGS || since < SUGGEST_MIN_GAP_MS || await openPick(group.id)) return null;
   return groupPick(group, false);
 }
 
@@ -400,10 +400,10 @@ async function answer(group: Group, sender: User, text: string) {
   if (!llmEnabled) {
     return `Commands: "Mayflower start a contest, $10 each, 1 week, loser buys dinner" · "my pick: …" · "Mayflower leaderboard" · "Mayflower what should we bet on?" · reply "in" to join a group pick.`;
   }
-  const contest = activeContest(group.id);
+  const contest = await activeContest(group.id);
   const board = contest ? await leaderboard(group) : "No active contest.";
   return generateText(
-    `Group chat so far:\n${recentChat(group.id, 30)}\n\nContest status:\n${board}\n\n${displayName(sender)} just said to you: "${text}"\nReply in 1-3 short sentences.`,
+    `Group chat so far:\n${await recentChat(group.id, 30)}\n\nContest status:\n${board}\n\n${displayName(sender)} just said to you: "${text}"\nReply in 1-3 short sentences.`,
     `You are Mayflower, an AI prediction-market agent added to a friends' iMessage group. You run friendly trading contests (equal stakes, best % return wins a reward the group sets) and suggest group trades. Every trade needs that person's own private approval; never claim to have placed a trade. No promises of profit. Be brief and fun. Commands you support: "start a contest", "my pick: …", "leaderboard", "what should we bet on?", replying "in" to a group pick, "end contest".`,
   );
 }

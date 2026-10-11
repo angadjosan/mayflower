@@ -14,7 +14,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
   if (!userId) return NextResponse.redirect(new URL("/login", process.env.APP_URL || "http://localhost:3000"));
 
   if (provider === "notion" && notionInternal) {
-    const src = saveConnection(userId, "notion", notionInternalConnection());
+    const src = await saveConnection(userId, "notion", notionInternalConnection());
     await syncSource(src.id);
     return home("connected=notion");
   }

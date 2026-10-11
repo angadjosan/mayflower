@@ -104,7 +104,7 @@ const signed = (n: number) => (n < 0 ? `-${usd(n)}` : `+${usd(n)}`);
 
 /** Find offsetting contracts for one open position. Returns up to 3 ideas, best protection-per-dollar first. */
 export async function findHedges(positionId: string): Promise<HedgeIdea[]> {
-  const db = load();
+  const db = await load();
   const pos = db.positions.find((p) => p.id === positionId && p.status === "open");
   if (!pos || pos.quantity <= 0) return [];
   const user = db.users.find((u) => u.id === pos.userId);
@@ -189,18 +189,18 @@ export async function proposeHedge(
   positionId: string,
   opts: { marketId?: string; side?: Side } = {},
 ): Promise<{ proposal: TradeProposal; idea: HedgeIdea; message: string } | { error: string }> {
-  const pos = load().positions.find((p) => p.id === positionId);
+  const pos = (await load()).positions.find((p) => p.id === positionId);
   if (!pos || pos.status !== "open") return { error: "That position isn't open." };
   const ideas = await findHedges(positionId);
   const idea = ideas.find((i) => (!opts.marketId || i.marketId === opts.marketId) && (!opts.side || i.side === opts.side));
   if (!idea) return { error: noHedgeExplanation(pos) };
 
-  const existing = load().proposals.find((p) =>
+  const existing = (await load()).proposals.find((p) =>
     p.kind === "hedge" && p.status === "pending" && p.hedgeForPositionId === positionId && p.marketId === idea.marketId &&
     Date.parse(p.expiresAt) > Date.now());
   if (existing) return { proposal: existing, idea, message: formatHedgeProposal(existing, idea) };
 
-  const origin = load().proposals.find((p) => p.id === pos.proposalId);
+  const origin = (await load()).proposals.find((p) => p.id === pos.proposalId);
   const proposal: TradeProposal = {
     id: id("prop_"), userId: pos.userId, marketId: idea.marketId, market: idea.market,
     researchId: origin?.researchId ?? "", kind: "hedge", hedgeForPositionId: positionId, discovery: "monitor",
@@ -212,14 +212,14 @@ export async function proposeHedge(
     status: "pending", approvalToken: crypto.randomBytes(16).toString("hex"),
     createdAt: now(), expiresAt: new Date(Date.now() + 6 * 3600 * 1000).toISOString(), version: 1,
   };
-  tx((db) => {
+  await tx((db) => {
     db.proposals.push(proposal);
     db.monitorEvents.push({
       id: id("mon_"), userId: pos.userId, positionId, trigger: "hedge requested", recommendation: "hedge",
       explanation: idea.explanation, proposalId: proposal.id, createdAt: now(),
     });
   });
-  audit({ userId: pos.userId, actor: "agent", action: "hedge.propose", ref: proposal.id, detail: { positionId, marketId: idea.marketId, side: idea.side, lossReducedUsd: idea.lossReducedUsd } });
+  await audit({ userId: pos.userId, actor: "agent", action: "hedge.propose", ref: proposal.id, detail: { positionId, marketId: idea.marketId, side: idea.side, lossReducedUsd: idea.lossReducedUsd } });
   return { proposal, idea, message: formatHedgeProposal(proposal, idea) };
 }
 

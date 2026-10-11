@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
-  const open = load().positions.filter((p) => p.userId === userId && p.status === "open");
+  const open = (await load()).positions.filter((p) => p.userId === userId && p.status === "open");
   const hedges = await Promise.all(
     open.map(async (p) => {
       let ideas: Awaited<ReturnType<typeof findHedges>> = [];
@@ -28,7 +28,7 @@ export async function GET() {
       };
     }),
   );
-  return NextResponse.json({ concentration: concentrationReport(userId), calibration: calibrationSummary(userId), hedges });
+  return NextResponse.json({ concentration: await concentrationReport(userId), calibration: await calibrationSummary(userId), hedges });
 }
 
 export async function POST(req: Request) {
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
   if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
   const body = (await req.json().catch(() => ({}))) as { action?: string; positionId?: string; marketId?: string; side?: Side };
   if (body.action !== "hedge" || !body.positionId) return NextResponse.json({ error: "Expected {action:'hedge', positionId}" }, { status: 400 });
-  const pos = load().positions.find((p) => p.id === body.positionId);
+  const pos = (await load()).positions.find((p) => p.id === body.positionId);
   if (!pos || pos.userId !== userId) return NextResponse.json({ error: "Position not found." }, { status: 404 });
   const side = body.side === "YES" || body.side === "NO" ? body.side : undefined;
   const r = await proposeHedge(pos.id, { marketId: body.marketId, side });

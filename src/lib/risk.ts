@@ -75,13 +75,13 @@ function positionValue(p: Position) {
   return p.quantity * (p.currentPrice ?? p.avgEntryPrice);
 }
 
-export function getPortfolioSummary(userId: string): {
+export async function getPortfolioSummary(userId: string): Promise<{
   valueUsd: number; availableUsd: number; investedUsd: number; unrealizedPnlUsd: number;
   realizedPnlUsd: number; atRiskUsd: number; riskBudgetUsd: number; exposureExplanation: string;
   sharpe: number | null; history: { at: string; valueUsd: number }[];
   mode: "sandbox" | "simulated"; topicExposure: { topic: string; usd: number }[];
-} {
-  const db = load();
+}> {
+  const db = await load();
   const user = db.users.find((u) => u.id === userId);
   const budget = user?.limits.budgetUsd ?? 0;
   const all = db.positions.filter((p) => p.userId === userId);
@@ -134,9 +134,9 @@ export function getPortfolioSummary(userId: string): {
   };
 }
 
-export function recordSnapshot(userId: string) {
-  const s = getPortfolioSummary(userId);
-  tx((db) => { db.snapshots.push({ userId, at: now(), valueUsd: s.valueUsd }); });
+export async function recordSnapshot(userId: string) {
+  const s = await getPortfolioSummary(userId);
+  await tx((db) => { db.snapshots.push({ userId, at: now(), valueUsd: s.valueUsd }); });
 }
 
 // ---------- Exit / stop watch levels ----------
@@ -194,8 +194,8 @@ function bucketize(open: Position[], keyOf: (p: Position) => { key: string; labe
     .sort((a, b) => b.usd - a.usd);
 }
 
-export function concentrationReport(userId: string): ConcentrationReport {
-  const db = load();
+export async function concentrationReport(userId: string): Promise<ConcentrationReport> {
+  const db = await load();
   const open = db.positions.filter((p) => p.userId === userId && p.status === "open" && p.costBasisUsd > 0);
   const total = atRiskUsd(open);
   const topics = bucketize(open, (p) => {

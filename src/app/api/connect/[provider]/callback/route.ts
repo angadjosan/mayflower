@@ -25,10 +25,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ provider
 
   try {
     const conn = await providers[provider].exchangeCode(code);
-    const src = saveConnection(userId, provider, conn);
+    const src = await saveConnection(userId, provider, conn);
     await syncSource(src.id);
   } catch (e) {
-    audit({ userId, actor: "system", action: "connector.connect_error", detail: { provider, error: e instanceof Error ? e.message.slice(0, 300) : "unknown" } });
+    await audit({ userId, actor: "system", action: "connector.connect_error", detail: { provider, error: e instanceof Error ? e.message.slice(0, 300) : "unknown" } });
     return home(`connect_error=${provider}+connection+failed`);
   }
   return home(`connected=${provider}`);

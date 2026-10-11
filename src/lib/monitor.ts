@@ -21,19 +21,19 @@ const DAY_MS = 24 * 3600 * 1000;
 const isExit = (p: TradeProposal) => p.kind === "close" || p.kind === "reduce";
 
 /** Mark pending proposals past their expiry as "expired". Returns how many changed. */
-export function expireProposals(): number {
+export async function expireProposals(): Promise<number> {
   const t = Date.now();
-  const expired = tx((db) => {
+  const expired = await tx((db) => {
     const hit = db.proposals.filter((p) => p.status === "pending" && Date.parse(p.expiresAt) < t);
     for (const p of hit) p.status = "expired";
     return hit.map((p) => ({ id: p.id, userId: p.userId }));
   });
-  for (const e of expired) audit({ userId: e.userId, actor: "system", action: "proposal.expired", ref: e.id });
+  for (const e of expired) await audit({ userId: e.userId, actor: "system", action: "proposal.expired", ref: e.id });
   return expired.length;
 }
 
-function hasPendingExit(positionUserId: string, marketId: string) {
-  return load().proposals.some((p) => p.userId === positionUserId && p.marketId === marketId && p.status === "pending" && isExit(p));
+async function hasPendingExit(positionUserId: string, marketId: string) {
+  return (await load()).proposals.some((p) => p.userId === positionUserId && p.marketId === marketId && p.status === "pending" && isExit(p));
 }
 
 /** Create a pending sell (close/reduce) proposal + MonitorEvent and alert the user. Never executes anything. */
@@ -53,13 +53,13 @@ async function recommendExit(a: {
     createdAt: now(), expiresAt: new Date(Date.now() + DAY_MS).toISOString(), version: 1,
   };
   const ev: MonitorEvent = { id: id("mon_"), userId: pos.userId, positionId: pos.id, trigger: a.trigger, recommendation, explanation: a.explanation, proposalId: proposal.id, createdAt: now() };
-  tx((d) => {
+  await tx((d) => {
     d.proposals.push(proposal);
     d.monitorEvents.push(ev);
     const p = d.positions.find((x) => x.id === pos.id);
     if (p) p.latestAssessment = a.explanation;
   });
-  audit({ userId: pos.userId, actor: "agent", action: "monitor.recommend", ref: proposal.id, detail: { positionId: pos.id, recommendation, trigger: a.trigger, bid } });
+  await audit({ userId: pos.userId, actor: "agent", action: "monitor.recommend", ref: proposal.id, detail: { positionId: pos.id, recommendation, trigger: a.trigger, bid } });
   try { await sendToUser(pos.userId, `${a.explanation}\nReview & approve: ${approvalUrl(proposal)}`); } catch { /* delivery best-effort */ }
   return ev;
 }
@@ -69,10 +69,10 @@ async function checkExitWatch(pos: Position, market: Market, bid: number): Promi
   let { stopPrice, takeProfitPrice } = pos;
   if (stopPrice == null && takeProfitPrice == null) {
     // Backfill positions opened before exit levels existed (skip hedges: their losses offset the main position).
-    if (load().proposals.find((p) => p.id === pos.proposalId)?.kind === "hedge") return undefined;
+    if ((await load()).proposals.find((p) => p.id === pos.proposalId)?.kind === "hedge") return undefined;
     const lv = exitLevels(pos.avgEntryPrice);
     ({ stopPrice, takeProfitPrice } = lv);
-    tx((d) => {
+    await tx((d) => {
       const p = d.positions.find((x) => x.id === pos.id);
       if (p) { p.stopPrice = lv.stopPrice; p.takeProfitPrice = lv.takeProfitPrice; p.watchConditions = lv.watchConditions; }
     });
@@ -82,9 +82,9 @@ async function checkExitWatch(pos: Position, market: Market, bid: number): Promi
   if (!stopHit && !tpHit) return undefined;
 
   const kind = stopHit ? "exit watch" : "take-profit";
-  const db = load();
+  const db = await load();
   const alertedRecently = db.monitorEvents.some((e) => e.positionId === pos.id && e.trigger.startsWith(kind) && Date.now() - Date.parse(e.createdAt) < DAY_MS);
-  if (alertedRecently || hasPendingExit(pos.userId, pos.marketId)) return undefined;
+  if (alertedRecently || await hasPendingExit(pos.userId, pos.marketId)) return undefined;
 
   const label = market.title || market.eventTitle;
   const origin = db.proposals.find((p) => p.id === pos.proposalId);
@@ -106,13 +106,13 @@ async function checkExitWatch(pos: Position, market: Market, bid: number): Promi
 
 /** At most once per user per day: if concentration limits are breached, suggest reducing the largest correlated position. */
 async function checkConcentration(userId: string): Promise<MonitorEvent | undefined> {
-  const rep = concentrationReport(userId);
+  const rep = await concentrationReport(userId);
   if (!rep.flagged || !rep.rebalanceCandidateId) return undefined;
-  const db = load();
+  const db = await load();
   const sentToday = db.monitorEvents.some((e) => e.userId === userId && e.trigger.startsWith("concentration") && Date.now() - Date.parse(e.createdAt) < DAY_MS);
   if (sentToday) return undefined;
   const pos = db.positions.find((p) => p.id === rep.rebalanceCandidateId && p.status === "open");
-  if (!pos || hasPendingExit(userId, pos.marketId)) return undefined;
+  if (!pos || await hasPendingExit(userId, pos.marketId)) return undefined;
   const market = pos.market;
   const bid = pos.currentPrice ?? bidFor(market, pos.side);
   if (bid == null || bid <= 0) return undefined;
@@ -130,8 +130,8 @@ async function checkConcentration(userId: string): Promise<MonitorEvent | undefi
 }
 
 export async function runMonitor(userId?: string): Promise<MonitorEvent[]> {
-  expireProposals();
-  const db0 = load();
+  await expireProposals();
+  const db0 = await load();
   const positions = db0.positions.filter((p) => p.status === "open" && (!userId || p.userId === userId));
   const events: MonitorEvent[] = [];
 
@@ -140,7 +140,7 @@ export async function runMonitor(userId?: string): Promise<MonitorEvent[]> {
     try { market = await getMarket(pos.marketId); } catch { /* keep stale */ }
     if (!market) continue;
     const bid = bidFor(market, pos.side);
-    tx((db) => {
+    await tx((db) => {
       const p = db.positions.find((x) => x.id === pos.id);
       if (p) { p.market = market!; if (bid != null) p.currentPrice = bid; p.updatedAt = now(); }
     });
@@ -157,7 +157,7 @@ export async function runMonitor(userId?: string): Promise<MonitorEvent[]> {
     const nearExpiry = market.expiresAt ? Date.parse(market.expiresAt) - Date.now() < NEAR_EXPIRY_MS : false;
     if (!moved && !nearExpiry) continue;
 
-    const db = load();
+    const db = await load();
     const recent = db.monitorEvents.some((e) => e.positionId === pos.id && Date.now() - Date.parse(e.createdAt) < RECHECK_MS);
     const pendingExit = db.proposals.some((p) => p.userId === pos.userId && p.marketId === pos.marketId && p.status === "pending" && isExit(p));
     if (recent || pendingExit) continue;
@@ -183,28 +183,28 @@ export async function runMonitor(userId?: string): Promise<MonitorEvent[]> {
         createdAt: now(), expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(), version: 1,
       };
       ev = { id: id("mon_"), userId: pos.userId, positionId: pos.id, trigger, recommendation, explanation, proposalId: proposal.id, createdAt: now() };
-      tx((d) => {
+      await tx((d) => {
         d.proposals.push(proposal);
         d.monitorEvents.push(ev);
         const p = d.positions.find((x) => x.id === pos.id);
         if (p) p.latestAssessment = explanation;
       });
-      audit({ userId: pos.userId, actor: "agent", action: "monitor.recommend", ref: proposal.id, detail: { positionId: pos.id, recommendation, pSide, bid } });
+      await audit({ userId: pos.userId, actor: "agent", action: "monitor.recommend", ref: proposal.id, detail: { positionId: pos.id, recommendation, pSide, bid } });
       try { await sendToUser(pos.userId, `${explanation}\nReview & approve: ${approvalUrl(proposal)}`); } catch { /* delivery best-effort */ }
     } else {
       const explanation = `${label}: ${trigger}. Re-checked — my estimate for ${pos.side} is ${pct(pSide)} vs ${pct(bid)} bid, so holding still looks reasonable.`;
       ev = { id: id("mon_"), userId: pos.userId, positionId: pos.id, trigger, recommendation: "hold", explanation, createdAt: now() };
-      tx((d) => {
+      await tx((d) => {
         d.monitorEvents.push(ev);
         const p = d.positions.find((x) => x.id === pos.id);
         if (p) p.latestAssessment = explanation;
       });
-      audit({ userId: pos.userId, actor: "agent", action: "monitor.hold", ref: pos.id, detail: { pSide, bid } });
+      await audit({ userId: pos.userId, actor: "agent", action: "monitor.hold", ref: pos.id, detail: { pSide, bid } });
     }
     events.push(ev);
   }
 
-  const users = userId ? [userId] : [...new Set(load().users.map((u) => u.id))];
+  const users = userId ? [userId] : [...new Set((await load()).users.map((u) => u.id))];
   for (const u of users) {
     try {
       const ev = await checkConcentration(u);
@@ -212,7 +212,7 @@ export async function runMonitor(userId?: string): Promise<MonitorEvent[]> {
     } catch (e) {
       console.warn("[monitor] concentration check failed", u, (e as Error).message);
     }
-    recordSnapshot(u);
+    await recordSnapshot(u);
   }
   try { await scoreSettledMarkets(); } catch (e) { console.warn("[monitor] calibration scoring failed", (e as Error).message); }
   return events;

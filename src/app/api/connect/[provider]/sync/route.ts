@@ -12,7 +12,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ provid
   if (!isContextProvider(provider)) return NextResponse.json({ error: "Unknown provider" }, { status: 404 });
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
-  const src = load().connectedSources.find((s) => s.userId === userId && s.provider === provider && s.status !== "revoked");
+  const src = (await load()).connectedSources.find((s) => s.userId === userId && s.provider === provider && s.status !== "revoked");
   if (!src) return NextResponse.json({ error: "Not connected" }, { status: 404 });
   const result = await syncSource(src.id);
   return NextResponse.json(result, { status: result.ok ? 200 : 502 });

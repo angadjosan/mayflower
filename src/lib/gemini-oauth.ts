@@ -112,12 +112,12 @@ function refresh(refreshToken: string): Promise<StoredToken> {
 
 // ---------- storage ----------
 
-function activeSource(userId: string): ConnectedSource | undefined {
-  return load().connectedSources.find((s) => s.userId === userId && s.provider === "gemini" && s.status === "connected");
+async function activeSource(userId: string): Promise<ConnectedSource | undefined> {
+  return (await load()).connectedSources.find((s) => s.userId === userId && s.provider === "gemini" && s.status === "connected");
 }
 
 /** Store (or replace) the user's Gemini connection, encrypted at rest, and mark the user linked. */
-export function saveGeminiToken(userId: string, tok: StoredToken): ConnectedSource {
+export async function saveGeminiToken(userId: string, tok: StoredToken): Promise<ConnectedSource> {
   const scopes = (tok.scope ? tok.scope.split(/[,\s]+/) : [...GEMINI_OAUTH_SCOPES]).filter(Boolean);
   const bad = scopes.filter((s) => FORBIDDEN_SCOPE.test(s));
   if (bad.length) {
@@ -125,7 +125,7 @@ export function saveGeminiToken(userId: string, tok: StoredToken): ConnectedSour
     void revokeToken(tok.access_token);
     throw new Error(`Gemini granted fund-management scopes (${bad.join(", ")}); refusing to store this token.`);
   }
-  const src = tx((db) => {
+  const src = await tx((db) => {
     const t = now();
     let s = db.connectedSources.find((x) => x.userId === userId && x.provider === "gemini");
     if (s) {
@@ -138,7 +138,7 @@ export function saveGeminiToken(userId: string, tok: StoredToken): ConnectedSour
     if (u) u.geminiLinked = true;
     return { ...s };
   });
-  audit({ userId, actor: "user", action: "gemini_linked", ref: src.id, detail: { method: "oauth", scopes } });
+  await audit({ userId, actor: "user", action: "gemini_linked", ref: src.id, detail: { method: "oauth", scopes } });
   return src;
 }
 
@@ -147,13 +147,13 @@ export function saveGeminiToken(userId: string, tok: StoredToken): ConnectedSour
  * so the new one replaces the old). Returns null when the user hasn't linked via OAuth — callers then use Plan B.
  */
 export async function getUserAccessToken(userId: string): Promise<string | null> {
-  const src = activeSource(userId);
+  const src = await activeSource(userId);
   if (!src) return null;
   let tok: StoredToken;
   try {
     tok = decryptJSON<StoredToken>(src.tokenEnc);
   } catch {
-    tx((db) => { const s = db.connectedSources.find((x) => x.id === src.id); if (s) { s.status = "error"; s.lastError = "Token could not be decrypted"; } });
+    await tx((db) => { const s = db.connectedSources.find((x) => x.id === src.id); if (s) { s.status = "error"; s.lastError = "Token could not be decrypted"; } });
     return null;
   }
   if (Date.parse(tok.expiresAt) - Date.now() > 120_000) return tok.access_token;
@@ -161,12 +161,12 @@ export async function getUserAccessToken(userId: string): Promise<string | null>
   try {
     const next = await refresh(tok.refresh_token);
     if (!next.refresh_token) next.refresh_token = tok.refresh_token;
-    tx((db) => { const s = db.connectedSources.find((x) => x.id === src.id); if (s) { s.tokenEnc = encryptJSON(next); s.lastError = undefined; } });
+    await tx((db) => { const s = db.connectedSources.find((x) => x.id === src.id); if (s) { s.tokenEnc = encryptJSON(next); s.lastError = undefined; } });
     return next.access_token;
   } catch (e) {
     const msg = e instanceof Error ? e.message.slice(0, 200) : "refresh failed";
-    tx((db) => { const s = db.connectedSources.find((x) => x.id === src.id); if (s) { s.status = "error"; s.lastError = msg; } });
-    audit({ userId, actor: "system", action: "gemini_oauth.refresh_failed", ref: src.id, detail: { error: msg } });
+    await tx((db) => { const s = db.connectedSources.find((x) => x.id === src.id); if (s) { s.status = "error"; s.lastError = msg; } });
+    await audit({ userId, actor: "system", action: "gemini_oauth.refresh_failed", ref: src.id, detail: { error: msg } });
     return null;
   }
 }
@@ -185,18 +185,18 @@ async function revokeToken(token: string) {
 
 /** Revoke at Gemini (best effort) and mark the connection revoked. */
 export async function disconnectGemini(userId: string): Promise<boolean> {
-  const src = activeSource(userId);
+  const src = await activeSource(userId);
   if (!src) return false;
   try {
     const tok = decryptJSON<StoredToken>(src.tokenEnc);
     await revokeToken(tok.refresh_token ?? tok.access_token);
   } catch { /* still revoke locally */ }
-  tx((db) => {
+  await tx((db) => {
     const s = db.connectedSources.find((x) => x.id === src.id);
     if (s) { s.status = "revoked"; s.revokedAt = now(); s.tokenEnc = ""; }
     const u = db.users.find((x) => x.id === userId);
     if (u) u.geminiLinked = false;
   });
-  audit({ userId, actor: "user", action: "gemini_unlinked", ref: src.id });
+  await audit({ userId, actor: "user", action: "gemini_unlinked", ref: src.id });
   return true;
 }

@@ -70,7 +70,7 @@ async function resolve(marketId: string, snapshot: Market): Promise<Resolution |
   }
   if (!expired && !(live && (live.status === "settled" || live.status === "closed"))) return undefined;
   // Fall back to the freshest quote we stored (monitor refreshes position snapshots).
-  const latest = load().positions
+  const latest = (await load()).positions
     .filter((p) => p.marketId === marketId)
     .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0]?.market;
   for (const m of [live, latest, snapshot].filter(Boolean) as Market[]) {
@@ -85,7 +85,7 @@ async function resolve(marketId: string, snapshot: Market): Promise<Resolution |
  * Returns the number of new scores.
  */
 export async function scoreSettledMarkets(): Promise<number> {
-  const db = load();
+  const db = await load();
   const scored = new Set(db.forecastScores.map((s) => s.proposalId).filter(Boolean));
   const todo = db.proposals.filter((p) => p.kind === "open" && !scored.has(p.id));
   const byMarket = new Map<string, TradeProposal[]>();
@@ -108,11 +108,11 @@ export async function scoreSettledMarkets(): Promise<number> {
     }
   }
   if (fresh.length) {
-    tx((d) => {
+    await tx((d) => {
       const have = new Set(d.forecastScores.map((s) => s.proposalId));
       for (const s of fresh) if (!have.has(s.proposalId)) d.forecastScores.push(s);
     });
-    audit({ actor: "system", action: "calibration.scored", detail: { count: fresh.length } });
+    await audit({ actor: "system", action: "calibration.scored", detail: { count: fresh.length } });
   }
   return fresh.length;
 }
@@ -127,8 +127,8 @@ export interface CalibrationSummary {
   explanation: string;
 }
 
-export function calibrationSummary(userId?: string): CalibrationSummary {
-  const scores = (load().forecastScores as ScoredForecast[]).filter((s) => !userId || s.userId === userId);
+export async function calibrationSummary(userId?: string): Promise<CalibrationSummary> {
+  const scores = ((await load()).forecastScores as ScoredForecast[]).filter((s) => !userId || s.userId === userId);
   const n = scores.length;
   if (!n) {
     return {

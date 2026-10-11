@@ -129,7 +129,7 @@ export async function approveAndExecute(
   token: string,
 ): Promise<{ ok: boolean; order?: Order; error?: string }> {
   // Validate + claim the proposal atomically (status -> approved) so double-taps can't double-execute.
-  const pre = tx((db) => {
+  const pre = await tx((db) => {
     const p = db.proposals.find((x) => x.id === proposalId);
     if (!p) return { error: "Proposal not found." };
     if (!tokenOk(p.approvalToken, token)) return { error: "Invalid approval link." };
@@ -160,13 +160,13 @@ export async function approveAndExecute(
     return { proposal: { ...p }, firstLink };
   });
   if ("error" in pre) {
-    audit({ userId: undefined, actor: "user", action: "approve_rejected", ref: proposalId, detail: { error: pre.error } });
+    await audit({ userId: undefined, actor: "user", action: "approve_rejected", ref: proposalId, detail: { error: pre.error } });
     return { ok: false, error: pre.error };
   }
   const p = pre.proposal as TradeProposal;
-  audit({ userId: p.userId, actor: "user", action: "approve", ref: p.id, detail: { side: p.side, quantity: p.quantity, limitPrice: p.limitPrice } });
+  await audit({ userId: p.userId, actor: "user", action: "approve", ref: p.id, detail: { side: p.side, quantity: p.quantity, limitPrice: p.limitPrice } });
   void onApproved(p.id); // YZi: hash of this exact approval committed to BNB testnet (no-op if not configured)
-  if (pre.firstLink) audit({ userId: p.userId, actor: "system", action: "gemini_linked", detail: { account: "Sandbox – shared account" } });
+  if (pre.firstLink) await audit({ userId: p.userId, actor: "system", action: "gemini_linked", detail: { account: "Sandbox – shared account" } });
 
   // "hedge" is a buy of the hedge market (its own position, linked via hedgeForPositionId).
   const action: Order["action"] = p.kind === "open" || p.kind === "hedge" ? "buy" : "sell";
@@ -179,7 +179,7 @@ export async function approveAndExecute(
     result = { status: "error", filledQuantity: 0, mode: "simulated", error: e instanceof Error ? e.message : String(e) };
   }
 
-  const order = tx((db) => {
+  const order = await tx((db) => {
     const t = now();
     const o: TrackedOrder = {
       id: id("ord_"), userId: p.userId, proposalId: p.id, exchangeOrderId: result.exchangeOrderId,
@@ -193,7 +193,7 @@ export async function approveAndExecute(
     if (prop) prop.status = ["rejected", "error", "cancelled"].includes(o.status) ? "failed" : "executed";
     return o;
   });
-  audit({ userId: p.userId, actor: "system", action: "order_placed", ref: order.id, detail: { status: order.status, mode: order.mode, error: order.error } });
+  await audit({ userId: p.userId, actor: "system", action: "order_placed", ref: order.id, detail: { status: order.status, mode: order.mode, error: order.error } });
 
   await sendToUser(p.userId, `${p.market.title}\n${describeOrder(order)}`);
   const ok = !["rejected", "error", "cancelled"].includes(order.status);
@@ -201,7 +201,7 @@ export async function approveAndExecute(
 }
 
 export async function rejectProposal(proposalId: string, token?: string): Promise<{ ok: boolean; error?: string }> {
-  const res = tx((db) => {
+  const res = await tx((db) => {
     const p = db.proposals.find((x) => x.id === proposalId);
     if (!p) return { error: "Proposal not found." };
     if (token !== undefined && !tokenOk(p.approvalToken, token)) return { error: "Invalid link." };
@@ -210,13 +210,13 @@ export async function rejectProposal(proposalId: string, token?: string): Promis
     return { userId: p.userId };
   });
   if ("error" in res) return { ok: false, error: res.error };
-  audit({ userId: res.userId, actor: "user", action: "reject", ref: proposalId });
+  await audit({ userId: res.userId, actor: "user", action: "reject", ref: proposalId });
   return { ok: true };
 }
 
 /** Poll the exchange for working orders and apply any new fills to positions. */
 export async function reconcileOrders(userId?: string): Promise<Order[]> {
-  const working = load().orders.filter(
+  const working = (await load()).orders.filter(
     (o) => (!userId || o.userId === userId) && o.exchangeOrderId && ["submitted", "open", "partially_filled"].includes(o.status),
   );
   const changed: Order[] = [];
@@ -224,7 +224,7 @@ export async function reconcileOrders(userId?: string): Promise<Order[]> {
     let st: Awaited<ReturnType<typeof getOrderStatus>>;
     try { st = await getOrderStatus(o.exchangeOrderId!); } catch { continue; }
     if (!st) continue;
-    const updated = tx((db) => {
+    const updated = await tx((db) => {
       const cur = db.orders.find((x) => x.id === o.id) as TrackedOrder | undefined;
       if (!cur) return undefined;
       const applied = cur.appliedQuantity ?? 0;
@@ -239,7 +239,7 @@ export async function reconcileOrders(userId?: string): Promise<Order[]> {
     });
     if (updated) {
       changed.push(updated);
-      audit({ userId: updated.userId, actor: "system", action: "order_update", ref: updated.id, detail: { status: updated.status, filled: updated.filledQuantity } });
+      await audit({ userId: updated.userId, actor: "system", action: "order_update", ref: updated.id, detail: { status: updated.status, filled: updated.filledQuantity } });
       if (["filled", "partially_filled", "cancelled", "rejected"].includes(updated.status)) {
         await sendToUser(updated.userId, `Order update — ${describeOrder(updated)}`);
       }

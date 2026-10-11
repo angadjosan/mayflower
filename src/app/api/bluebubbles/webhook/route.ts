@@ -54,8 +54,8 @@ export async function POST(req: Request) {
       }
       return;
     }
-    const user = getOrCreateUser({ handle: address });
-    storeMessage(user.id, "user", text, "imessage");
+    const user = await getOrCreateUser({ handle: address });
+    await storeMessage(user.id, "user", text, "imessage");
     let reply: string;
     try {
       reply = await handleMessage(user.id, text, "imessage");

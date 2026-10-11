@@ -9,5 +9,5 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
-  return NextResponse.json({ sources: listForUser(userId), available: available() });
+  return NextResponse.json({ sources: await listForUser(userId), available: available() });
 }

@@ -1,5 +1,5 @@
 // Extracts interests, beliefs and risk limits from free text and merges them into the user profile.
-import { tx, id, now, audit, load } from "../db";
+import { tx, id, now, audit, type DB } from "../db";
 import { generateJSON } from "../llm";
 import type { RiskLimits } from "../types";
 
@@ -69,8 +69,8 @@ export async function updateProfileFromMessage(userId: string, text: string): Pr
     ex = heuristic(text);
   }
 
-  const changes: string[] = [];
-  const result = tx((db) => {
+  const result = await tx((db) => {
+    const changes: string[] = []; // inside: tx callbacks may be retried
     const user = db.users.find((u) => u.id === userId);
     if (!user) return { changed: false, summary: "User not found." };
     const L = user.limits;
@@ -131,12 +131,12 @@ export async function updateProfileFromMessage(userId: string, text: string): Pr
     return { changed: changes.length > 0, summary: changes.length ? `Updated: ${changes.join(", ")}.` : "No profile changes.", newlyOnboarded: !wasOnboarded && user.onboarded };
   });
 
-  if (result.changed) audit({ userId, actor: "agent", action: "profile.update", detail: { text, extracted: ex, summary: result.summary } });
+  if (result.changed) await audit({ userId, actor: "agent", action: "profile.update", detail: { text, extracted: ex, summary: result.summary } });
   return { changed: result.changed, summary: result.summary };
 }
 
 // The default budget exists from signup; require that the user actually stated one at some point.
-function hasBudgetMention(db: ReturnType<typeof load>, userId: string, budget?: number): boolean {
+function hasBudgetMention(db: DB, userId: string, budget?: number): boolean {
   if (budget) return true;
   return db.audit.some((a) => a.userId === userId && a.action === "profile.update" && /budget \$/.test(String((a.detail as { summary?: string })?.summary ?? "")));
 }

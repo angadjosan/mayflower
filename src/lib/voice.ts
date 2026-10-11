@@ -43,10 +43,10 @@ export function normalizePhone(raw?: string | null): string | undefined {
   return undefined;
 }
 
-export function findUserByCaller(caller?: string): User | undefined {
+export async function findUserByCaller(caller?: string): Promise<User | undefined> {
   const n = normalizePhone(caller);
   if (!n) return undefined;
-  return load().users.find((u) => normalizePhone(u.handle) === n);
+  return (await load()).users.find((u) => normalizePhone(u.handle) === n);
 }
 
 const UNKNOWN_CALLER =
@@ -62,9 +62,9 @@ function forVoice(text: string, max = 900): string {
 const dollars = (n: number) => `$${n.toFixed(2).replace(/\.00$/, "")}`;
 const cents = (p: number) => `${Math.round(p * 100)} cents`;
 
-function pendingFor(userId: string): TradeProposal[] {
+async function pendingFor(userId: string): Promise<TradeProposal[]> {
   const t = Date.now();
-  return load()
+  return (await load())
     .proposals.filter((p) => p.userId === userId && p.status === "pending" && new Date(p.expiresAt).getTime() > t)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
@@ -76,18 +76,18 @@ function speakProposal(p: TradeProposal, i?: number): string {
 }
 
 export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promise<VoiceToolResult> {
-  const user = findUserByCaller(body.caller ?? body.system__caller_id);
+  const user = await findUserByCaller(body.caller ?? body.system__caller_id);
   if (!user) {
-    audit({ actor: "system", action: "voice.unknown_caller", detail: { tool } });
+    await audit({ actor: "system", action: "voice.unknown_caller", detail: { tool } });
     return { ok: false, say: UNKNOWN_CALLER };
   }
   const userId = user.id;
-  audit({ userId, actor: "user", action: `voice.tool.${tool}`, detail: { focus: body.focus, proposalId: body.proposalId, question: body.question } });
+  await audit({ userId, actor: "user", action: `voice.tool.${tool}`, detail: { focus: body.focus, proposalId: body.proposalId, question: body.question } });
 
   switch (tool) {
     case "portfolio": {
-      const s = getPortfolioSummary(userId);
-      const open = load().positions.filter((p) => p.userId === userId && p.status === "open");
+      const s = await getPortfolioSummary(userId);
+      const open = (await load()).positions.filter((p) => p.userId === userId && p.status === "open");
       const pos = open.slice(0, 5).map((p) => `${p.market.title || p.market.eventTitle} (${p.quantity} ${p.side})`).join("; ");
       return {
         ok: true,
@@ -102,7 +102,7 @@ export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promis
       };
     }
     case "pending_proposals": {
-      const ps = pendingFor(userId);
+      const ps = await pendingFor(userId);
       if (!ps.length) return { ok: true, say: "You have no pending trade ideas right now.", proposals: [] };
       return {
         ok: true,
@@ -122,12 +122,12 @@ export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promis
       if (user.paused) return { ok: true, say: "Trading is paused, so I'm not proposing new trades. You can resume it by text or in the app." };
       const ps = await discover(userId, { focus: body.focus?.trim() || undefined, max: 2 });
       if (!ps.length) return { ok: true, say: "I looked, but didn't find a trade with enough edge to beat fees and uncertainty right now. No trade is a valid answer." };
-      const db = load();
+      const db = await load();
       await sendToUser(userId, `From our call — ${ps.length} new idea${ps.length > 1 ? "s" : ""}:\n\n${ps.map((p) => formatProposal(p, db.research.find((r) => r.id === p.researchId))).join("\n\n")}`);
       return { ok: true, say: `I found ${ps.length}. ${ps.map(speakProposal).join(" ")} I've texted you the details and approval links. Nothing is placed until you approve by link.` };
     }
     case "send_approval_link": {
-      const pending = pendingFor(userId);
+      const pending = await pendingFor(userId);
       const p = body.proposalId ? pending.find((x) => x.id === body.proposalId) : pending.length === 1 ? pending[0] : undefined;
       if (!p) {
         return {
@@ -137,9 +137,9 @@ export async function runVoiceTool(tool: VoiceTool, body: VoiceToolBody): Promis
             : pending.length ? "Which idea should I send? Ask me for your pending ideas first." : "You have no pending ideas to approve.",
         };
       }
-      const r = load().research.find((x) => x.id === p.researchId);
+      const r = (await load()).research.find((x) => x.id === p.researchId);
       await sendToUser(userId, `Approval link you asked for on the call:\n\n${formatProposal(p, r)}`);
-      audit({ userId, actor: "agent", action: "voice.approval_link_sent", ref: p.id });
+      await audit({ userId, actor: "agent", action: "voice.approval_link_sent", ref: p.id });
       return { ok: true, say: "Sent to your phone. Open the link to review the exact order and approve it there." };
     }
   }

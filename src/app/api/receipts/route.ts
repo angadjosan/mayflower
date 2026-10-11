@@ -12,12 +12,12 @@ export async function GET(req: Request) {
   if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
   const verifyId = new URL(req.url).searchParams.get("verify");
   if (verifyId) {
-    const r = load().auditReceipts.find((x) => x.id === verifyId);
+    const r = (await load()).auditReceipts.find((x) => x.id === verifyId);
     if (!r || r.userId !== userId) return NextResponse.json({ error: "not found" }, { status: 404 });
     return NextResponse.json(await verifyReceipt(verifyId));
   }
   return NextResponse.json({
-    receipts: listReceipts(userId),
+    receipts: await listReceipts(userId),
     onchainEnabled: receiptsOnchainEnabled(),
     chain: "bsc-testnet",
     explorer: BSC_TESTNET_EXPLORER,

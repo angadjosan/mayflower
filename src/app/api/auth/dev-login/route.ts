@@ -12,6 +12,6 @@ export async function GET(req: Request) {
   if (process.env.NODE_ENV === "production" || !isLocalRequest(req.headers)) return NextResponse.json({ error: "not found" }, { status: 404 });
   const url = new URL(req.url);
   const userId = url.searchParams.get("userId") || "";
-  if (!load().users.some((u) => u.id === userId)) return NextResponse.json({ error: "unknown userId" }, { status: 404 });
+  if (!(await load()).users.some((u) => u.id === userId)) return NextResponse.json({ error: "unknown userId" }, { status: 404 });
   return setSessionCookie(NextResponse.redirect(new URL(safeNext(url.searchParams.get("next")) || "/", url)), userId);
 }

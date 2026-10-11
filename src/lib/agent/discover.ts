@@ -118,8 +118,8 @@ As a critic, challenge this: resolution-rule ambiguity or mismatch, weak/stale/m
     };
   }
   const saved: ResearchReport = { ...report, id: id("res_"), createdAt: now() };
-  tx((db) => { db.research.push(saved); });
-  audit({ userId, actor: "agent", action: "research.create", ref: saved.id, detail: { marketId: market.id, p: saved.estimatedProbability, source } });
+  await tx((db) => { db.research.push(saved); });
+  await audit({ userId, actor: "agent", action: "research.create", ref: saved.id, detail: { marketId: market.id, p: saved.estimatedProbability, source } });
   return saved;
 }
 
@@ -151,7 +151,7 @@ Return JSON {ids: [up to 4 market ids most relevant to the user's interests, bes
 
 export async function discover(userId: string, opts?: { focus?: string; max?: number }): Promise<TradeProposal[]> {
   const max = opts?.max ?? 3;
-  const db0 = load();
+  const db0 = await load();
   const user = db0.users.find((u) => u.id === userId);
   if (!user) return [];
   const theses = db0.theses.filter((t) => t.userId === userId);
@@ -203,7 +203,7 @@ export async function discover(userId: string, opts?: { focus?: string; max?: nu
     const price = side === "YES" ? ya : na;
     const pSide = side === "YES" ? pYes : 1 - pYes;
 
-    const db = load();
+    const db = await load();
     const openPositions = db.positions.filter((p) => p.userId === userId && p.status === "open");
     const topics = theses.filter((t) => matchesTopic(market, t.topic)).map((t) => t.topic);
     const relatedExposureUsd = openPositions
@@ -218,7 +218,7 @@ export async function discover(userId: string, opts?: { focus?: string; max?: nu
     });
 
     if (size.blockedReason) {
-      audit({ userId, actor: "agent", action: "discover.no_trade", ref: r.id, detail: { marketId: market.id, reason: size.blockedReason } });
+      await audit({ userId, actor: "agent", action: "discover.no_trade", ref: r.id, detail: { marketId: market.id, reason: size.blockedReason } });
       continue;
     }
 
@@ -233,8 +233,8 @@ export async function discover(userId: string, opts?: { focus?: string; max?: nu
       status: "pending", approvalToken: crypto.randomBytes(16).toString("hex"),
       createdAt: now(), expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(), version: 1,
     };
-    tx((d) => { d.proposals.push(proposal); });
-    audit({ userId, actor: "agent", action: "proposal.create", ref: proposal.id, detail: { marketId: market.id, side, quantity: proposal.quantity, costUsd: proposal.costUsd, discovery } });
+    await tx((d) => { d.proposals.push(proposal); });
+    await audit({ userId, actor: "agent", action: "proposal.create", ref: proposal.id, detail: { marketId: market.id, side, quantity: proposal.quantity, costUsd: proposal.costUsd, discovery } });
     created.push(proposal);
   }
   return created;

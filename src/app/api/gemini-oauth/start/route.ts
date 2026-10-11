@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   const userId = await sessionUserId();
   if (!userId) return NextResponse.redirect(new URL("/login", process.env.APP_URL || "http://localhost:3000"));
   const { state, nonce } = makeState(userId);
-  audit({ userId, actor: "user", action: "gemini_oauth.start" });
+  await audit({ userId, actor: "user", action: "gemini_oauth.start" });
   const res = NextResponse.redirect(authorizeUrl(state));
   res.cookies.set(STATE_COOKIE, nonce, {
     httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/api/gemini-oauth", maxAge: 15 * 60,

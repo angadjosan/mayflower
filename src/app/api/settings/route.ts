@@ -41,7 +41,7 @@ export async function POST(req: Request) {
   if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
   if (typeof body.handle === "string" && body.handle.trim()) {
     const want = normalizeHandle(body.handle);
-    const taken = load().users.some((u) => u.id !== userId && u.handle && normalizeHandle(u.handle) === want);
+    const taken = (await load()).users.some((u) => u.id !== userId && u.handle && normalizeHandle(u.handle) === want);
     if (taken) return NextResponse.json({ error: "That handle is already linked to another account." }, { status: 409 });
   }
   let limits: Partial<RiskLimits> | undefined;
@@ -50,8 +50,8 @@ export async function POST(req: Request) {
     if (typeof v === "string") return NextResponse.json({ error: v }, { status: 400 });
     limits = v;
   }
-  getOrCreateUser({ id: userId });
-  const user = tx((db) => {
+  await getOrCreateUser({ id: userId });
+  const user = await tx((db) => {
     const u = db.users.find((x) => x.id === userId)!;
     if (limits) {
       const merged = { ...u.limits, ...limits };
@@ -65,6 +65,6 @@ export async function POST(req: Request) {
     if (typeof body.handle === "string") u.handle = body.handle.trim() || undefined;
     return u;
   });
-  audit({ userId, actor: "user", action: "settings_update", detail: { limits, paused: body.paused, name: body.name, handle: body.handle } });
+  await audit({ userId, actor: "user", action: "settings_update", detail: { limits, paused: body.paused, name: body.name, handle: body.handle } });
   return NextResponse.json({ user });
 }

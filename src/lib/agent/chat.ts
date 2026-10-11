@@ -58,7 +58,7 @@ function metaIntent(t: string): MetaIntent | undefined {
 
 /** "hedge my btc" → propose a hedge for the best-matching open position (still needs its own approval). */
 async function hedgeReply(userId: string, text: string): Promise<string> {
-  const open = load().positions.filter((p) => p.userId === userId && p.status === "open");
+  const open = (await load()).positions.filter((p) => p.userId === userId && p.status === "open");
   if (!open.length) return "You don't have any open positions to hedge yet.";
   const words = text.split(/\W+/).filter((w) => w.length > 2 && !/^(hedge|hedging|my|the|position|should|please)$/.test(w));
   const target =
@@ -66,7 +66,7 @@ async function hedgeReply(userId: string, text: string): Promise<string> {
     [...open].sort((a, b) => b.costBasisUsd - a.costBasisUsd)[0];
   const r = await proposeHedge(target.id);
   if ("error" in r) return r.error;
-  return `${r.message}\nMore hedge ideas are on your dashboard's Risk panel: ${createLoginLink(userId)}`;
+  return `${r.message}\nMore hedge ideas are on your dashboard's Risk panel: ${await createLoginLink(userId)}`;
 }
 
 const SOURCE_LABEL: Record<UserThesis["source"], string> = {
@@ -74,8 +74,8 @@ const SOURCE_LABEL: Record<UserThesis["source"], string> = {
   notion: "From Notion", slack: "From Slack", gmail: "From Gmail", discord: "From Discord",
 };
 
-function sourcesText(userId: string): string {
-  const db = load();
+async function sourcesText(userId: string): Promise<string> {
+  const db = await load();
   const theses = db.theses.filter((t) => t.userId === userId);
   if (!theses.length) return "I don't know much about you yet — tell me topics you follow or beliefs you hold and I'll remember them.";
   const groups = new Map<string, UserThesis[]>();
@@ -91,24 +91,24 @@ function sourcesText(userId: string): string {
   }
   const connected = db.connectedSources.filter((c) => c.userId === userId && c.status === "connected");
   if (connected.length) lines.push(`Connected sources: ${connected.map((c) => c.provider + (c.accountLabel ? ` (${c.accountLabel})` : "")).join(", ")}.`);
-  lines.push(`You can disconnect any source (and drop what it taught me) on your dashboard: ${createLoginLink(userId)}`);
+  lines.push(`You can disconnect any source (and drop what it taught me) on your dashboard: ${await createLoginLink(userId)}`);
   return lines.join("\n");
 }
 
 async function metaReply(userId: string, m: MetaIntent): Promise<string> {
   switch (m.kind) {
     case "dashboard":
-      return `Here's your private dashboard link (expires in 15 min, works once): ${createLoginLink(userId)}`;
+      return `Here's your private dashboard link (expires in 15 min, works once): ${await createLoginLink(userId)}`;
     case "connect": {
       const name = m.provider === "gmail" ? "Gmail" : m.provider[0].toUpperCase() + m.provider.slice(1);
-      return `Connecting ${name} is optional — I only read it as context for your interests (never as trade instructions), and you can revoke it anytime from the dashboard.\nConnect here (expires in 15 min): ${createLoginLink(userId, `/api/connect/${m.provider}/start`)}`;
+      return `Connecting ${name} is optional — I only read it as context for your interests (never as trade instructions), and you can revoke it anytime from the dashboard.\nConnect here (expires in 15 min): ${await createLoginLink(userId, `/api/connect/${m.provider}/start`)}`;
     }
     case "gemini":
-      return `Link your Gemini account here (expires in 15 min). I'll still ask you to approve every order: ${createLoginLink(userId, "/api/gemini-oauth/start")}`;
+      return `Link your Gemini account here (expires in 15 min). I'll still ask you to approve every order: ${await createLoginLink(userId, "/api/gemini-oauth/start")}`;
     case "hedge":
       return hedgeReply(userId, m.text);
     case "sources":
-      return sourcesText(userId);
+      return await sourcesText(userId);
   }
 }
 
@@ -133,16 +133,16 @@ Return JSON {"intent": "..."}.`,
   return heuristicIntent(text);
 }
 
-function pendingFor(userId: string): TradeProposal[] {
+async function pendingFor(userId: string): Promise<TradeProposal[]> {
   const t = Date.now();
-  return load().proposals
+  return (await load()).proposals
     .filter((p) => p.userId === userId && p.status === "pending" && Date.parse(p.expiresAt) > t)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 /** Pick the pending proposal the user is most likely referring to (amount or keyword match, else most recent). */
-function matchProposal(userId: string, text: string): TradeProposal | undefined {
-  const pend = pendingFor(userId);
+async function matchProposal(userId: string, text: string): Promise<TradeProposal | undefined> {
+  const pend = await pendingFor(userId);
   const s = text.toLowerCase();
   const amt = s.match(/\$\s?(\d+(?:\.\d+)?)/);
   if (amt) {
@@ -160,13 +160,13 @@ async function proposalsText(userId: string, focus?: string): Promise<string> {
   await sendToUser(userId, `On it — scanning Gemini markets${focus ? ` for "${focus}"` : ""} and researching the best fits. Give me about 30 seconds.`).catch(() => {});
   const props = await discover(userId, focus ? { focus } : undefined);
   if (!props.length) return "I looked, but didn't find a trade with enough edge to beat fees and uncertainty right now. No trade is a valid answer — I'll keep watching.";
-  const db = load();
+  const db = await load();
   return props.map((p) => formatProposal(p, db.research.find((r) => r.id === p.researchId))).join("\n\n");
 }
 
-function portfolioText(userId: string, text: string): string {
-  const s = getPortfolioSummary(userId);
-  const db = load();
+async function portfolioText(userId: string, text: string): Promise<string> {
+  const s = await getPortfolioSummary(userId);
+  const db = await load();
   const open = db.positions.filter((p) => p.userId === userId && p.status === "open");
   const lines = [
     `Portfolio${s.mode === "simulated" ? " (simulated)" : " (sandbox)"}: $${s.atRiskUsd.toFixed(2)} at risk of your $${s.riskBudgetUsd} budget, $${s.availableUsd.toFixed(2)} room left. P&L: ${s.unrealizedPnlUsd >= 0 ? "+" : ""}$${s.unrealizedPnlUsd.toFixed(2)} unrealized, ${s.realizedPnlUsd >= 0 ? "+" : ""}$${s.realizedPnlUsd.toFixed(2)} realized.`,
@@ -189,9 +189,9 @@ function portfolioText(userId: string, text: string): string {
 }
 
 async function answerQuestion(userId: string, text: string): Promise<string> {
-  const db = load();
-  const pend = pendingFor(userId).slice(0, 3);
-  const target = matchProposal(userId, text);
+  const db = await load();
+  const pend = (await pendingFor(userId)).slice(0, 3);
+  const target = await matchProposal(userId, text);
   const positions = db.positions.filter((p) => p.userId === userId && p.status === "open");
   const ctx = {
     limits: db.users.find((u) => u.id === userId)?.limits,
@@ -205,7 +205,7 @@ async function answerQuestion(userId: string, text: string): Promise<string> {
       })(),
     })),
     openPositions: positions.map((p) => ({ market: p.market.title, side: p.side, quantity: p.quantity, entry: p.avgEntryPrice, current: p.currentPrice, latestAssessment: p.latestAssessment, watchConditions: p.watchConditions })),
-    portfolio: getPortfolioSummary(userId),
+    portfolio: await getPortfolioSummary(userId),
   };
   try {
     if (!llmEnabled) throw new Error("LLM_DISABLED");
@@ -220,15 +220,15 @@ async function answerQuestion(userId: string, text: string): Promise<string> {
 }
 
 export async function handleMessage(userId: string, text: string, channel: "imessage" | "web"): Promise<string> {
-  const db = load();
+  const db = await load();
   const user = db.users.find((u) => u.id === userId);
   if (!user) return "Sorry, I couldn't find your account.";
   const priorUserMsgs = db.messages.filter((m) => m.userId === userId && m.role === "user").length;
-  audit({ userId, actor: "user", action: "chat.message", detail: { channel, text } });
+  await audit({ userId, actor: "user", action: "chat.message", detail: { channel, text } });
 
   const meta = metaIntent(text);
   if (meta) {
-    audit({ userId, actor: "agent", action: `chat.${meta.kind}`, detail: meta });
+    await audit({ userId, actor: "agent", action: `chat.${meta.kind}`, detail: meta });
     return metaReply(userId, meta);
   }
 
@@ -241,14 +241,14 @@ export async function handleMessage(userId: string, text: string, channel: "imes
     case "profile": {
       const wasOnboarded = user.onboarded;
       const res = await updateProfileFromMessage(userId, text);
-      const after = load().users.find((u) => u.id === userId)!;
+      const after = (await load()).users.find((u) => u.id === userId)!;
       if (!wasOnboarded && after.onboarded) {
         const L = after.limits;
         const ideas = await proposalsText(userId);
         return `Got it — risking up to $${L.budgetUsd} total, $${L.maxPerTradeUsd} max per trade, ${L.riskStyle} style. Here's what I found:\n\n${ideas}`;
       }
       if (!after.onboarded) {
-        const hasInterest = load().theses.some((t) => t.userId === userId);
+        const hasInterest = (await load()).theses.some((t) => t.userId === userId);
         const missing = hasInterest ? "how much total you're willing to risk (e.g. $200)" : "a few topics you follow or have opinions on";
         return `${res.changed ? res.summary + " " : ""}Next, tell me ${missing}.`;
       }
@@ -264,27 +264,27 @@ export async function handleMessage(userId: string, text: string, channel: "imes
     case "question":
       return answerQuestion(userId, text);
     case "approve": {
-      const p = matchProposal(userId, text);
+      const p = await matchProposal(userId, text);
       if (!p) return "There's no pending proposal to approve. Say \"find opportunities\" and I'll look for one.";
-      audit({ userId, actor: "agent", action: "chat.approval_link", ref: p.id });
+      await audit({ userId, actor: "agent", action: "chat.approval_link", ref: p.id });
       return `I can't place trades from a text — please confirm the exact order:\n${p.kind === "open" ? "Buy" : "Sell"} ${p.quantity} ${p.side} contracts of "${p.market.title || p.market.eventTitle}" at up to $${p.limitPrice.toFixed(2)} each (max $${p.costUsd.toFixed(2)}).\nConfirm here: ${approvalUrl(p)}${user.paused ? "\n(Note: trading is paused — resume first.)" : ""}`;
     }
     case "reject": {
-      const p = matchProposal(userId, text);
+      const p = await matchProposal(userId, text);
       if (!p) return "No pending proposals to reject.";
-      tx((d) => { const x = d.proposals.find((y) => y.id === p.id); if (x && x.status === "pending") x.status = "rejected"; });
-      audit({ userId, actor: "user", action: "proposal.reject", ref: p.id, detail: { channel } });
+      await tx((d) => { const x = d.proposals.find((y) => y.id === p.id); if (x && x.status === "pending") x.status = "rejected"; });
+      await audit({ userId, actor: "user", action: "proposal.reject", ref: p.id, detail: { channel } });
       return `Skipped "${p.market.title || p.market.eventTitle}". Want me to look for something else?`;
     }
     case "portfolio":
-      return portfolioText(userId, text);
+      return await portfolioText(userId, text);
     case "pause":
-      tx((d) => { const u = d.users.find((x) => x.id === userId); if (u) u.paused = true; });
-      audit({ userId, actor: "user", action: "user.pause", detail: { channel } });
+      await tx((d) => { const u = d.users.find((x) => x.id === userId); if (u) u.paused = true; });
+      await audit({ userId, actor: "user", action: "user.pause", detail: { channel } });
       return "Paused. I won't submit any orders until you say \"resume\". I'll still watch your positions.";
     case "resume":
-      tx((d) => { const u = d.users.find((x) => x.id === userId); if (u) u.paused = false; });
-      audit({ userId, actor: "user", action: "user.resume", detail: { channel } });
+      await tx((d) => { const u = d.users.find((x) => x.id === userId); if (u) u.paused = false; });
+      await audit({ userId, actor: "user", action: "user.resume", detail: { channel } });
       return "Resumed. Approved trades can be submitted again — I'll still ask before every order.";
     default: {
       if (!user.onboarded) return ONBOARDING;

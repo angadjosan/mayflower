@@ -30,9 +30,9 @@ export async function GET(req: Request) {
 
   try {
     const tok = await exchangeCode(code);
-    saveGeminiToken(userId, tok);
+    await saveGeminiToken(userId, tok);
   } catch (e) {
-    audit({ userId, actor: "system", action: "gemini_oauth.error", detail: { error: e instanceof Error ? e.message.slice(0, 300) : "unknown" } });
+    await audit({ userId, actor: "system", action: "gemini_oauth.error", detail: { error: e instanceof Error ? e.message.slice(0, 300) : "unknown" } });
     return home("connect_error=gemini+connection+failed");
   }
   return home("connected=gemini");

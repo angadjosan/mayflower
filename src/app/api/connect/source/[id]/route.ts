@@ -10,7 +10,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const userId = await sessionUserId();
   if (!userId) return NextResponse.json(UNAUTHORIZED, { status: 401 });
-  const src = getSource(id);
+  const src = await getSource(id);
   if (!src || src.userId !== userId || !isContextProvider(src.provider)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

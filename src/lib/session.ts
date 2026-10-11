@@ -55,7 +55,7 @@ export async function currentUserId(): Promise<string> {
   if (raw) {
     const i = raw.lastIndexOf(".");
     const userId = raw.slice(0, i), sig = raw.slice(i + 1);
-    if (verify(userId, sig) && load().users.some((u) => u.id === userId)) return userId;
+    if (verify(userId, sig) && (await load()).users.some((u) => u.id === userId)) return userId;
   }
   if (await demoFallbackAllowed()) return DEMO_USER_ID;
   throw new UnauthorizedError();

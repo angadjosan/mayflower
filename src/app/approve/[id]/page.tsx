@@ -23,7 +23,7 @@ export default async function ApprovePage({
 }) {
   const { id } = await params;
   const { t } = await searchParams;
-  const db = load();
+  const db = await load();
   const p = db.proposals.find((x) => x.id === id);
 
   if (!p || !tokenOk(p.approvalToken, t)) {

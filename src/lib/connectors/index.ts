@@ -70,8 +70,8 @@ export type PublicSource = Omit<ConnectedSource, "tokenEnc">;
 export const publicSource = ({ tokenEnc: _t, ...rest }: ConnectedSource): PublicSource => { void _t; return rest; };
 
 /** Stores (or refreshes) the user's connection for a provider with the token encrypted at rest. */
-export function saveConnection(userId: string, provider: ContextProvider, conn: Conn): PublicSource {
-  const src = tx((db) => {
+export async function saveConnection(userId: string, provider: ContextProvider, conn: Conn): Promise<PublicSource> {
+  const src = await tx((db) => {
     let s = db.connectedSources.find((x) => x.userId === userId && x.provider === provider && x.status !== "revoked");
     if (s) {
       s.tokenEnc = encryptJSON(conn.token);
@@ -88,12 +88,12 @@ export function saveConnection(userId: string, provider: ContextProvider, conn: 
     }
     return { ...s };
   });
-  audit({ userId, actor: "user", action: "connector.connect", ref: src.id, detail: { provider, scopes: conn.scopes, accountLabel: conn.accountLabel } });
+  await audit({ userId, actor: "user", action: "connector.connect", ref: src.id, detail: { provider, scopes: conn.scopes, accountLabel: conn.accountLabel } });
   return publicSource(src);
 }
 
-export function listForUser(userId: string) {
-  const db = load();
+export async function listForUser(userId: string) {
+  const db = await load();
   return db.connectedSources
     .filter((s) => s.userId === userId && s.status !== "revoked")
     .map((s) => ({
@@ -103,8 +103,8 @@ export function listForUser(userId: string) {
     }));
 }
 
-export function getSource(sourceId: string): ConnectedSource | undefined {
-  return load().connectedSources.find((s) => s.id === sourceId);
+export async function getSource(sourceId: string): Promise<ConnectedSource | undefined> {
+  return (await load()).connectedSources.find((s) => s.id === sourceId);
 }
 
 // ---------- Extraction ----------
@@ -186,7 +186,7 @@ async function extract(provider: ContextProvider, docs: Doc[]): Promise<{ intere
 export interface SyncResult { ok: boolean; theses: number; items: number; error?: string }
 
 export async function syncSource(sourceId: string): Promise<SyncResult> {
-  const src = getSource(sourceId);
+  const src = await getSource(sourceId);
   if (!src || src.status === "revoked" || !src.tokenEnc) return { ok: false, theses: 0, items: 0, error: "Source not connected" };
   if (!isContextProvider(src.provider)) return { ok: false, theses: 0, items: 0, error: "Unsupported provider" };
   const provider = src.provider;
@@ -200,7 +200,7 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
     const { interests, method } = docs.length ? await extract(provider, docs) : { interests: [], method: "heuristic" as const };
 
     const lc = (s: string) => s.trim().toLowerCase();
-    const counts = tx((db) => {
+    const counts = await tx((db) => {
       const s = db.connectedSources.find((x) => x.id === sourceId);
       if (!s || s.status === "revoked") return { theses: 0, items: 0 };
       if (tokenChanged) s.tokenEnc = encryptJSON(token);
@@ -245,22 +245,22 @@ export async function syncSource(sourceId: string): Promise<SyncResult> {
       return { theses, items: newItems.length };
     });
 
-    audit({ userId, actor: "system", action: "connector.sync", ref: sourceId, detail: { provider, docs: docs.length, method, ...counts } });
+    await audit({ userId, actor: "system", action: "connector.sync", ref: sourceId, detail: { provider, docs: docs.length, method, ...counts } });
     return { ok: true, ...counts };
   } catch (e) {
     const msg = clip(e instanceof Error ? e.message : String(e), 300);
-    tx((db) => {
+    await tx((db) => {
       const s = db.connectedSources.find((x) => x.id === sourceId);
       if (s && s.status !== "revoked") { s.lastError = msg; s.status = "error"; s.lastSyncedAt = now(); }
     });
-    audit({ userId, actor: "system", action: "connector.sync_error", ref: sourceId, detail: { provider, error: msg } });
+    await audit({ userId, actor: "system", action: "connector.sync_error", ref: sourceId, detail: { provider, error: msg } });
     return { ok: false, theses: 0, items: 0, error: msg };
   }
 }
 
 /** Cron entry point: re-sync every active context source (skips Gemini account links). */
 export async function syncAll(): Promise<{ synced: number; failed: number }> {
-  const ids = load().connectedSources.filter((s) => s.status !== "revoked" && isContextProvider(s.provider) && s.tokenEnc).map((s) => s.id);
+  const ids = (await load()).connectedSources.filter((s) => s.status !== "revoked" && isContextProvider(s.provider) && s.tokenEnc).map((s) => s.id);
   let synced = 0, failed = 0;
   for (const sid of ids) {
     const r = await syncSource(sid);
@@ -287,12 +287,12 @@ async function revokeRemote(provider: ContextProvider, token: Record<string, unk
 
 /** Revokes a source: deletes the token, and removes every thesis and excerpt derived from it. */
 export async function disconnect(sourceId: string): Promise<boolean> {
-  const src = getSource(sourceId);
+  const src = await getSource(sourceId);
   if (!src) return false;
   if (src.tokenEnc && isContextProvider(src.provider) && !(src.provider === "notion" && notionInternal)) {
     try { await revokeRemote(src.provider, decryptJSON<Record<string, unknown>>(src.tokenEnc)); } catch { /* undecryptable token */ }
   }
-  const removed = tx((db) => {
+  const removed = await tx((db) => {
     const s = db.connectedSources.find((x) => x.id === sourceId);
     if (!s) return { theses: 0, items: 0 };
     s.status = "revoked";
@@ -303,6 +303,6 @@ export async function disconnect(sourceId: string): Promise<boolean> {
     db.contextItems = db.contextItems.filter((c) => c.sourceId !== sourceId);
     return { theses: th - db.theses.length, items: ci - db.contextItems.length };
   });
-  audit({ userId: src.userId, actor: "user", action: "connector.disconnect", ref: sourceId, detail: { provider: src.provider, removed } });
+  await audit({ userId: src.userId, actor: "user", action: "connector.disconnect", ref: sourceId, detail: { provider: src.provider, removed } });
   return true;
 }
