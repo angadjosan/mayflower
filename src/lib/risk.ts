@@ -1,6 +1,6 @@
 // Deterministic risk engine. The LLM never decides size or enforces limits; this module does.
 import { load, tx, now } from "./db";
-import type { User, Position } from "./types";
+import type { User, Position, OrderMode } from "./types";
 
 const KELLY_FRACTION = { conservative: 0.25, balanced: 0.4, aggressive: 0.6 } as const;
 const UNCERTAINTY_DISCOUNT = { low: 1, medium: 0.6, high: 0.35 } as const;
@@ -79,7 +79,7 @@ export async function getPortfolioSummary(userId: string): Promise<{
   valueUsd: number; availableUsd: number; investedUsd: number; unrealizedPnlUsd: number;
   realizedPnlUsd: number; atRiskUsd: number; riskBudgetUsd: number; exposureExplanation: string;
   sharpe: number | null; history: { at: string; valueUsd: number }[];
-  mode: "sandbox" | "simulated"; topicExposure: { topic: string; usd: number }[];
+  mode: OrderMode; topicExposure: { topic: string; usd: number }[];
 }> {
   const db = await load();
   const user = db.users.find((u) => u.id === userId);

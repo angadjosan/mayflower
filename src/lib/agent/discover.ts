@@ -2,7 +2,7 @@
 import crypto from "crypto";
 import { tx, load, id, now, audit } from "../db";
 import { generateJSON } from "../llm";
-import { listMarkets, getBalance, exchangeMode } from "../exchange";
+import { listMarkets, getBalance, orderModeFor, venueOf } from "../exchange";
 import { searchEvidence } from "../research";
 import { approvalUrl } from "../execution";
 import { sizePosition } from "../risk";
@@ -187,8 +187,10 @@ export async function discover(userId: string, opts?: { focus?: string; max?: nu
     for (const m of general) picks.push({ market: m, discovery: "general" });
   }
 
-  let availableUsd = Infinity;
-  try { availableUsd = (await getBalance()).availableUsd; } catch { /* unknown balance: rely on Mayflower limits */ }
+  // Each venue has its own balance; unknown balance means we rely on Mayflower limits.
+  const venues = [...new Set(picks.map((x) => venueOf(x.market)))];
+  const balances = new Map(await Promise.all(venues.map(async (v) =>
+    [v, await getBalance(v).then((b) => b.availableUsd).catch(() => Infinity)] as const)));
 
   // Research every pick in parallel (the slow part); sizing below stays sequential so pending exposure adds up.
   const chosen = picks.slice(0, max);
@@ -209,16 +211,22 @@ export async function discover(userId: string, opts?: { focus?: string; max?: nu
     const relatedExposureUsd = openPositions
       .filter((p) => topics.some((t) => matchesTopic(p.market, t)) || (market.eventId && p.market.eventId === market.eventId))
       .reduce((s, p) => s + p.costBasisUsd, 0);
-    const pendingUsd = db.proposals.filter((p) => p.userId === userId && p.status === "pending").reduce((s, p) => s + p.costUsd, 0)
-      + created.reduce((s, p) => s + p.costUsd, 0);
+    const venue = venueOf(market);
+    const onVenue = (p: TradeProposal) => venueOf(p.market) === venue;
+    const pendingUsd = db.proposals.filter((p) => p.userId === userId && p.status === "pending" && onVenue(p)).reduce((s, p) => s + p.costUsd, 0)
+      + created.filter(onVenue).reduce((s, p) => s + p.costUsd, 0);
+    const availableUsd = balances.get(venue) ?? Infinity;
 
     const size = sizePosition({
       estimatedProbability: pSide, price, uncertainty: r.uncertainty, user,
       openPositions, availableUsd: Math.max(0, availableUsd - pendingUsd), relatedExposureUsd,
     });
 
-    if (size.blockedReason) {
-      await audit({ userId, actor: "agent", action: "discover.no_trade", ref: r.id, detail: { marketId: market.id, reason: size.blockedReason } });
+    const minSize = market.polymarket?.minSize ?? 0;
+    const blockedReason = size.blockedReason
+      ?? (size.quantity < minSize ? `Polymarket minimum is ${minSize} contracts; sized at ${size.quantity}` : undefined);
+    if (blockedReason) {
+      await audit({ userId, actor: "agent", action: "discover.no_trade", ref: r.id, detail: { marketId: market.id, reason: blockedReason } });
       continue;
     }
 
@@ -229,7 +237,7 @@ export async function discover(userId: string, opts?: { focus?: string; max?: nu
       marketProbability: price, estimatedProbability: pSide, edge: +(pSide - price).toFixed(4),
       thesis: (thesisTopic ? `Related to your interest in ${thesisTopic}. ` : "") + r.summary,
       sizingExplanation: size.explanation,
-      riskNotes: [r.criticNotes, `Max loss $${size.costUsd.toFixed(2)} if ${side} loses.`, market.source === "mock" ? "Mock market data." : ""].filter(Boolean).join(" "),
+      riskNotes: [r.criticNotes, `Max loss $${size.costUsd.toFixed(2)} if ${side} loses.`, market.source === "mock" ? "Mock market data." : "", venue !== "gemini" ? `Not listed on Gemini, so this trades on ${venue === "polymarket" ? "Polymarket" : "Hyperliquid"}.` : ""].filter(Boolean).join(" "),
       status: "pending", approvalToken: crypto.randomBytes(16).toString("hex"),
       createdAt: now(), expiresAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(), version: 1,
     };
@@ -245,7 +253,9 @@ export function formatProposal(p: TradeProposal, r?: ResearchReport): string {
   const buying = p.kind === "open" || p.kind === "hedge";
   const label = p.kind === "open" ? "Idea" : p.kind === "hedge" ? "Hedge idea (partial, not guaranteed)" : p.kind === "close" ? "Suggest closing" : "Suggest reducing";
   const tag = p.discovery === "personalized" ? " (matches your interests)" : p.discovery === "general" ? " (broader market)" : "";
-  const mock = (m.source === "mock" ? " (mock data)" : "") + (String(exchangeMode) === "simulated" ? " (simulated)" : "");
+  const mode = orderModeFor(m);
+  const mock = (m.source === "mock" ? " (mock data)" : "")
+    + (venueOf(m) === "gemini" ? (mode === "simulated" ? " (simulated)" : "") : ` (${venueOf(m) === "polymarket" ? "Polymarket" : "Hyperliquid"}, ${mode === "live" ? "real funds" : mode})`);
   const why = (r?.summary || p.thesis).split(/(?<=\.)\s/).slice(0, 2).join(" ");
   const lines = [
     `${label}${tag}${mock}: ${m.eventTitle}${m.title && m.title !== m.eventTitle ? ` — ${m.title}` : ""}`,

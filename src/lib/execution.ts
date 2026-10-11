@@ -2,7 +2,7 @@
 import crypto from "crypto";
 import { tx, load, id, now, audit, type DB } from "./db";
 import type { Order, Position, TradeProposal } from "./types";
-import { placeOrder, getOrderStatus } from "./exchange";
+import { placeOrder, getOrderStatus, venueLabel, venueOf } from "./exchange";
 import { sendToUser } from "./notify";
 import { exitLevels } from "./risk";
 import { onApproved } from "./receipts";
@@ -109,7 +109,7 @@ function applyFill(db: DB, order: TrackedOrder, qty: number, price: number) {
 }
 
 function describeOrder(o: Order): string {
-  const label = o.mode === "simulated" ? "simulated" : "Gemini sandbox – shared account";
+  const label = venueLabel(o.mode, o.venue ?? venueOf({ id: o.marketId, source: "gemini" }));
   const what = `${o.action === "buy" ? "Buy" : "Sell"} ${o.quantity} ${o.side} @ ${usd(o.limitPrice)} limit`;
   switch (o.status) {
     case "filled":
@@ -176,7 +176,7 @@ export async function approveAndExecute(
       marketId: p.marketId, side: p.side, action, quantity: p.quantity, limitPrice: p.limitPrice, clientOrderId: p.id,
     });
   } catch (e) {
-    result = { status: "error", filledQuantity: 0, mode: "simulated", error: e instanceof Error ? e.message : String(e) };
+    result = { status: "error", filledQuantity: 0, mode: "simulated", venue: venueOf(p.market), error: e instanceof Error ? e.message : String(e) };
   }
 
   const order = await tx((db) => {
@@ -185,7 +185,7 @@ export async function approveAndExecute(
       id: id("ord_"), userId: p.userId, proposalId: p.id, exchangeOrderId: result.exchangeOrderId,
       marketId: p.marketId, side: p.side, action, quantity: p.quantity, limitPrice: p.limitPrice,
       status: result.status, filledQuantity: result.filledQuantity ?? 0, avgFillPrice: result.avgFillPrice,
-      error: result.error, mode: result.mode, createdAt: t, updatedAt: t, appliedQuantity: 0,
+      error: result.error, mode: result.mode, venue: result.venue, createdAt: t, updatedAt: t, appliedQuantity: 0,
     };
     db.orders.push(o);
     applyFill(db, o, o.filledQuantity, o.avgFillPrice ?? o.limitPrice);
@@ -193,7 +193,7 @@ export async function approveAndExecute(
     if (prop) prop.status = ["rejected", "error", "cancelled"].includes(o.status) ? "failed" : "executed";
     return o;
   });
-  await audit({ userId: p.userId, actor: "system", action: "order_placed", ref: order.id, detail: { status: order.status, mode: order.mode, error: order.error } });
+  await audit({ userId: p.userId, actor: "system", action: "order_placed", ref: order.id, detail: { status: order.status, mode: order.mode, venue: order.venue, error: order.error } });
 
   await sendToUser(p.userId, `${p.market.title}\n${describeOrder(order)}`);
   const ok = !["rejected", "error", "cancelled"].includes(order.status);
@@ -222,7 +222,7 @@ export async function reconcileOrders(userId?: string): Promise<Order[]> {
   const changed: Order[] = [];
   for (const o of working) {
     let st: Awaited<ReturnType<typeof getOrderStatus>>;
-    try { st = await getOrderStatus(o.exchangeOrderId!); } catch { continue; }
+    try { st = await getOrderStatus(o.exchangeOrderId!, o.venue ?? venueOf({ id: o.marketId, source: "gemini" })); } catch { continue; }
     if (!st) continue;
     const updated = await tx((db) => {
       const cur = db.orders.find((x) => x.id === o.id) as TrackedOrder | undefined;

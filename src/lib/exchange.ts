@@ -1,13 +1,47 @@
-// Gemini Exchange Prediction Markets client (sandbox) with a simulated fallback.
+// Exchange router. Gemini Exchange Prediction Markets (sandbox) is the primary venue; Polymarket (./polymarket),
+// then Hyperliquid HIP-4 outcomes (./hyperliquid), fill in markets Gemini doesn't list.
+// Each venue falls back to clearly-labeled simulated orders.
 // Docs: https://developer.gemini.com/prediction-markets/getting-started
 import crypto from "crypto";
-import type { Market, Order, Side } from "./types";
+import type { Market, Order, OrderMode, Side, Venue } from "./types";
+import {
+  listPolymarketMarkets, getPolymarketMarket, placePolymarketOrder, getPolymarketOrderStatus,
+  getPolymarketBalance, isPolymarketId, polymarketMode, polymarketEnabled,
+} from "./polymarket";
+import {
+  listHyperliquidMarkets, getHyperliquidMarket, placeHyperliquidOrder, getHyperliquidOrderStatus,
+  getHyperliquidBalance, isHyperliquidId, hyperliquidMode, hyperliquidEnabled,
+} from "./hyperliquid";
+
+export { polymarketMode, polymarketEnabled, hyperliquidMode, hyperliquidEnabled };
 
 const API_KEY = process.env.GEMINI_EXCHANGE_API_KEY;
 const API_SECRET = process.env.GEMINI_EXCHANGE_API_SECRET;
 const BASE_URL = (process.env.GEMINI_EXCHANGE_BASE_URL || "https://api.sandbox.gemini.com").replace(/\/$/, "");
 
+/** Gemini's mode. Use orderModeFor(market) for what an order on a given market will actually do. */
 export const exchangeMode: "sandbox" | "simulated" = API_KEY && API_SECRET ? "sandbox" : "simulated";
+
+export const venueOf = (m: Pick<Market, "id" | "source">): Venue =>
+  m.source === "polymarket" || isPolymarketId(m.id) ? "polymarket"
+  : m.source === "hyperliquid" || isHyperliquidId(m.id) ? "hyperliquid"
+  : "gemini";
+const venueOfId = (id: string): Venue => venueOf({ id, source: "gemini" });
+
+/** How an order on this market would execute right now. */
+export function orderModeFor(m: Market): OrderMode {
+  if (m.source === "mock" || m.paperOnly) return "simulated";
+  const v = venueOf(m);
+  return v === "polymarket" ? polymarketMode : v === "hyperliquid" ? hyperliquidMode : exchangeMode;
+}
+
+const VENUE_NAME: Record<Venue, string> = { gemini: "Gemini", polymarket: "Polymarket", hyperliquid: "Hyperliquid" };
+
+export function venueLabel(mode: OrderMode, venue: Venue = "gemini"): string {
+  if (mode === "simulated") return venue === "gemini" ? "simulated" : `simulated, ${VENUE_NAME[venue]} prices`;
+  if (mode === "testnet") return "Hyperliquid testnet";
+  return mode === "live" ? `${VENUE_NAME[venue]} – live, real funds` : "Gemini sandbox – shared account";
+}
 
 // All paths below verified against the sandbox on 2026-10-11 (a real order was placed, filled and found in history).
 // Public, no auth. GET /v1/prediction-markets/events?status=active&limit=N
@@ -157,8 +191,7 @@ async function fetchEvents(base: string, limit: number): Promise<any[]> {
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-export async function listMarkets(): Promise<Market[]> {
-  if (cache && Date.now() - cache.at < 60_000) return cache.markets;
+async function listGeminiMarkets(): Promise<Market[]> {
   let markets: Market[] = [];
   const [own, prod] = await Promise.allSettled([
     fetchEvents(BASE_URL, 500),
@@ -171,6 +204,64 @@ export async function listMarkets(): Promise<Market[]> {
     const tradable = new Set(markets.map((m) => m.id));
     markets = [...markets, ...mapEvents(prod.value, true).filter((m) => !tradable.has(m.id))];
   }
+  return markets;
+}
+
+// ---------- cross-venue matching ----------
+const STOP = new Set(["will", "the", "a", "an", "be", "in", "on", "of", "by", "to", "at", "for", "before", "after", "than", "or", "and", "is", "this", "its", "who", "what", "which"]);
+const toWords = (txt: string) => new Set(
+  txt.toLowerCase().replace(/[$,]/g, "").replace(/[^a-z0-9.%\s]/g, " ").split(/\s+/)
+    .map((w) => w.replace(/\.$/, "")).filter((w) => w && !STOP.has(w)),
+);
+const tokenCache = new WeakMap<Market, { words: Set<string>; nums: string; label?: Set<string> }>();
+function tokens(m: Market) {
+  let t = tokenCache.get(m);
+  if (!t) {
+    const words = toWords(`${m.eventTitle} ${m.title}`);
+    // Multi-outcome contracts are titled "Event — Outcome"; the outcome label is what tells siblings apart.
+    const label = m.title.includes(" — ") ? toWords(m.title.split(" — ").slice(1).join(" ")) : undefined;
+    t = { words, nums: [...words].filter((w) => /\d/.test(w)).sort().join(), label };
+    tokenCache.set(m, t);
+  }
+  return t;
+}
+
+/** Same real-world question on two venues: high word overlap, identical numbers (strikes, years), close expiry. */
+export function sameQuestion(a: Market, b: Market): boolean {
+  if (a.expiresAt && b.expiresAt && Math.abs(Date.parse(a.expiresAt) - Date.parse(b.expiresAt)) > 7 * 86400_000) return false;
+  const { words: ta, nums: na, label: la } = tokens(a), { words: tb, nums: nb, label: lb } = tokens(b);
+  if (na !== nb) return false;
+  if (la?.size && lb?.size && ![...la].some((w) => lb.has(w))) return false;
+  let inter = 0;
+  for (const w of ta) if (tb.has(w)) inter++;
+  return inter / (ta.size + tb.size - inter) >= 0.65;
+}
+
+/**
+ * All tradable markets, by venue priority Gemini > Polymarket > Hyperliquid: a market is only included when
+ * no higher-priority venue lists an orderable equivalent. Paper-only listings (real markets the configured
+ * sandbox/testnet can't trade) yield to an orderable equivalent anywhere.
+ */
+export async function listMarkets(): Promise<Market[]> {
+  if (cache && Date.now() - cache.at < 60_000) return cache.markets;
+  const results = await Promise.allSettled([listGeminiMarkets(), listPolymarketMarkets(), listHyperliquidMarkets()]);
+  const names = ["Gemini", "Polymarket", "Hyperliquid"];
+  results.forEach((r, i) => {
+    if (r.status === "rejected") console.warn(`[exchange] ${names[i]} listMarkets failed:`, (r.reason as Error).message);
+  });
+
+  const tradable: Market[] = [];
+  const paper: Market[] = [];
+  for (const r of results) {
+    if (r.status !== "fulfilled") continue;
+    for (const m of r.value) {
+      // Only dedupe across venues: sibling contracts on one venue ("— Lakers" / "— Celtics") stay distinct.
+      const dup = (x: Market) => venueOf(x) !== venueOf(m) && sameQuestion(x, m);
+      if (m.paperOnly) { if (!paper.some(dup)) paper.push(m); }
+      else if (!tradable.some(dup)) tradable.push(m);
+    }
+  }
+  let markets = [...tradable, ...paper.filter((p) => !tradable.some((t) => t.id !== p.id && venueOf(t) !== venueOf(p) && sameQuestion(t, p)))];
   if (!markets.length) {
     console.warn("[exchange] no live markets, using mock markets");
     markets = MOCK_MARKETS;
@@ -181,7 +272,11 @@ export async function listMarkets(): Promise<Market[]> {
 
 export async function getMarket(id: string): Promise<Market | undefined> {
   const all = await listMarkets();
-  return all.find((m) => m.id === id) ?? MOCK_MARKETS.find((m) => m.id === id);
+  const listed = all.find((m) => m.id === id);
+  if (listed) return listed;
+  if (isPolymarketId(id)) return getPolymarketMarket(id).catch(() => undefined);
+  if (isHyperliquidId(id)) return getHyperliquidMarket(id).catch(() => undefined);
+  return MOCK_MARKETS.find((m) => m.id === id);
 }
 
 // ---------- orders ----------
@@ -190,7 +285,8 @@ type OrderResult = {
   status: Order["status"];
   filledQuantity: number;
   avgFillPrice?: number;
-  mode: "sandbox" | "simulated";
+  mode: OrderMode;
+  venue: Venue;
   error?: string;
 };
 
@@ -217,19 +313,23 @@ export async function placeOrder(o: {
   clientOrderId: string;
 }): Promise<OrderResult> {
   const market = await getMarket(o.marketId);
-  const simulate = exchangeMode === "simulated" || !market || market.source === "mock" || market.paperOnly;
+  const venue: Venue = market ? venueOf(market) : venueOfId(o.marketId);
+  const simulate = !market || orderModeFor(market) === "simulated";
 
   if (simulate) {
-    if (!market) return { status: "rejected", filledQuantity: 0, mode: "simulated", error: "Unknown market" };
+    if (!market) return { status: "rejected", filledQuantity: 0, mode: "simulated", venue, error: "Unknown market" };
     const yes = o.side === "YES";
     const ask = yes ? market.yesAsk : market.noAsk;
     const bid = yes ? market.yesBid : market.noBid;
     const crosses = o.action === "buy" ? ask !== undefined && o.limitPrice >= ask : bid !== undefined && o.limitPrice <= bid;
     const fillPx = o.action === "buy" ? ask : bid;
     return crosses
-      ? { exchangeOrderId: `sim-${o.clientOrderId}`, status: "filled", filledQuantity: o.quantity, avgFillPrice: fillPx, mode: "simulated" }
-      : { exchangeOrderId: `sim-${o.clientOrderId}`, status: "open", filledQuantity: 0, mode: "simulated" };
+      ? { exchangeOrderId: `sim-${o.clientOrderId}`, status: "filled", filledQuantity: o.quantity, avgFillPrice: fillPx, mode: "simulated", venue }
+      : { exchangeOrderId: `sim-${o.clientOrderId}`, status: "open", filledQuantity: 0, mode: "simulated", venue };
   }
+
+  if (venue === "polymarket") return { ...(await placePolymarketOrder(market, o)), venue };
+  if (venue === "hyperliquid") return { ...(await placeHyperliquidOrder(market, o)), venue };
 
   const body = {
     symbol: o.marketId,
@@ -252,15 +352,18 @@ export async function placeOrder(o: {
       resp = await privatePost<any>(ORDER_PATH, body);
     }
     const s = mapStatus(resp);
-    return { exchangeOrderId: resp.orderId != null ? String(resp.orderId) : undefined, ...s, mode: "sandbox" };
+    return { exchangeOrderId: resp.orderId != null ? String(resp.orderId) : undefined, ...s, mode: "sandbox", venue };
   } catch (e) {
-    return { status: "error", filledQuantity: 0, mode: "sandbox", error: (e as Error).message };
+    return { status: "error", filledQuantity: 0, mode: "sandbox", venue, error: (e as Error).message };
   }
 }
 
 export async function getOrderStatus(
   exchangeOrderId: string,
+  venue: Venue = "gemini",
 ): Promise<{ status: Order["status"]; filledQuantity: number; avgFillPrice?: number } | undefined> {
+  if (venue === "polymarket") return getPolymarketOrderStatus(exchangeOrderId);
+  if (venue === "hyperliquid") return getHyperliquidOrderStatus(exchangeOrderId);
   if (exchangeMode === "simulated" || exchangeOrderId.startsWith("sim-")) return undefined;
   for (const [path, body] of [[ACTIVE_ORDERS_PATH, { limit: 100 }], [ORDER_HISTORY_PATH, { limit: 500 }]] as const) {
     try {
@@ -275,7 +378,9 @@ export async function getOrderStatus(
   return undefined;
 }
 
-export async function getBalance(): Promise<{ availableUsd: number; mode: "sandbox" | "simulated" }> {
+export async function getBalance(venue: Venue = "gemini"): Promise<{ availableUsd: number; mode: OrderMode }> {
+  if (venue === "polymarket") return getPolymarketBalance();
+  if (venue === "hyperliquid") return getHyperliquidBalance();
   if (exchangeMode === "simulated") return { availableUsd: 1000, mode: "simulated" };
   try {
     const resp = await privatePost<any[]>(BALANCES_PATH);

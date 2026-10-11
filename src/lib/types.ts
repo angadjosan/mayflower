@@ -47,9 +47,32 @@ export interface Market {
   noAsk?: number;
   lastPrice?: number;
   volume?: number;
-  source: "gemini" | "mock"; // honest labeling
+  source: "gemini" | "polymarket" | "hyperliquid" | "mock"; // venue the market trades on (honest labeling)
   paperOnly?: boolean; // real production market not listed in sandbox: discovery only, orders are always simulated
+  polymarket?: PolymarketRef; // set when source === "polymarket"
+  hyperliquid?: HyperliquidRef; // set when source === "hyperliquid"
 }
+
+/** A Hyperliquid HIP-4 outcome (YES = side 0, NO = side 1). */
+export interface HyperliquidRef {
+  network: "testnet" | "mainnet";
+  outcome: number;
+  quoteToken: string;
+}
+
+/** What the Polymarket CLOB needs to place an order on a market (from the Gamma API). */
+export interface PolymarketRef {
+  conditionId: string;
+  yesTokenId: string;
+  noTokenId: string;
+  negRisk: boolean;
+  tickSize: number;
+  minSize: number; // minimum order size in contracts
+}
+
+export type Venue = "gemini" | "polymarket" | "hyperliquid";
+/** sandbox = Gemini sandbox, testnet = Hyperliquid testnet, live = real funds (Polymarket or Hyperliquid mainnet). */
+export type OrderMode = "sandbox" | "testnet" | "live" | "simulated";
 
 export interface Citation {
   title: string;
@@ -117,7 +140,8 @@ export interface Order {
   filledQuantity: number;
   avgFillPrice?: number;
   error?: string;
-  mode: "sandbox" | "simulated"; // simulated when no exchange credentials
+  mode: OrderMode; // simulated when no exchange credentials; live = real funds
+  venue?: Venue; // missing on orders placed before Polymarket support (= gemini)
   createdAt: string;
   updatedAt: string;
 }

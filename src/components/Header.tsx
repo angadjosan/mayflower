@@ -53,6 +53,16 @@ export function Header({ s, onTogglePause, busy }: { s: DashState; onTogglePause
         <Badge tone={s.modes.exchange === "sandbox" ? "accent" : "warn"}>
           Exchange: {s.modes.exchange === "sandbox" ? "Gemini sandbox" : "simulated"}
         </Badge>
+        {s.modes.polymarket && s.modes.polymarket !== "off" && (
+          <Badge tone={s.modes.polymarket === "live" ? "accent" : "warn"}>
+            Fallback: Polymarket {s.modes.polymarket === "live" ? "live" : "simulated"}
+          </Badge>
+        )}
+        {s.modes.hyperliquid && s.modes.hyperliquid !== "off" && (
+          <Badge tone={s.modes.hyperliquid === "simulated" ? "warn" : "accent"}>
+            Fallback: Hyperliquid {s.modes.hyperliquid}
+          </Badge>
+        )}
         <Badge tone={s.modes.research === "context.dev" ? "good" : "warn"}>
           Research: {s.modes.research === "context.dev" ? "Context.dev" : "mock"}
         </Badge>

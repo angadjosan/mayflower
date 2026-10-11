@@ -178,7 +178,7 @@ export async function findHedges(positionId: string): Promise<HedgeIdea[]> {
 
 /** Plain-English summary for chat when no hedge exists. */
 export function noHedgeExplanation(pos: Position): string {
-  return `I couldn't find a genuinely offsetting contract for "${pos.market.title}" on Gemini right now (I only count contracts in the same event, or the same underlying settling at the same time, that pay out when your position loses). The honest options are to hold, or to reduce/close it.`;
+  return `I couldn't find a genuinely offsetting contract for "${pos.market.title}" right now (I only count contracts in the same event, or the same underlying settling at the same time, that pay out when your position loses). The honest options are to hold, or to reduce/close it.`;
 }
 
 /**

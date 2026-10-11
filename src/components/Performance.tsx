@@ -5,7 +5,7 @@ import { Card, Sparkline, Stat, pnlClass, signedUsd, usd } from "./ui";
 export function Performance({ p }: { p: PortfolioView }) {
   const maxTopic = Math.max(1, ...p.topicExposure.map((t) => t.usd));
   return (
-    <Card title="Performance" action={<span className="text-xs text-stone-400">{p.mode === "sandbox" ? "Gemini sandbox" : "Simulated"}</span>}>
+    <Card title="Performance" action={<span className="text-xs text-stone-400">{p.mode === "sandbox" ? "Gemini sandbox" : p.mode === "live" ? "Live (real funds)" : p.mode === "testnet" ? "Hyperliquid testnet" : "Simulated"}</span>}>
       <Sparkline points={p.history.map((h) => h.valueUsd)} />
       <div className="mt-4 grid grid-cols-3 gap-3">
         <Stat label="Unrealized" value={signedUsd(p.unrealizedPnlUsd)} className={`text-base ${pnlClass(p.unrealizedPnlUsd)}`} />

@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { load } from "@/lib/db";
-import { exchangeMode } from "@/lib/exchange";
+import { orderModeFor, venueLabel, venueOf } from "@/lib/exchange";
 import ApproveActions from "./ApproveActions";
 
 export const runtime = "nodejs";
@@ -38,7 +38,9 @@ export default async function ApprovePage({
   const order = db.orders.find((o) => o.proposalId === p.id);
   const research = db.research.find((r) => r.id === p.researchId);
   const expired = new Date(p.expiresAt).getTime() < Date.now();
-  const simulated = String(exchangeMode) !== "sandbox";
+  const mode = orderModeFor(p.market);
+  const simulated = mode === "simulated";
+  const venue = venueOf(p.market);
   const buying = p.kind === "open" || p.kind === "hedge";
   const action = buying ? "Buy" : "Sell";
   const maxLoss = buying ? p.costUsd : 0;
@@ -62,7 +64,7 @@ export default async function ApprovePage({
       <div className="mb-4 flex items-center justify-between">
         <span className="text-sm font-semibold tracking-wide">Mayflower</span>
         <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${simulated ? "bg-amber-100 text-amber-800" : "bg-sky-100 text-sky-800"}`}>
-          {simulated ? "Simulated" : "Gemini sandbox – shared account"}
+          {simulated ? (venue === "gemini" ? "Simulated" : `Simulated · ${venue === "polymarket" ? "Polymarket" : "Hyperliquid"}`) : venueLabel(mode, venue)}
         </span>
       </div>
       <h1 className="text-xl font-semibold">Confirm this exact order</h1>

@@ -1,5 +1,5 @@
 import type {
-  AuditEvent, ChatMessage, Citation, MonitorEvent, Order, Position, ResearchReport, TradeProposal, User, UserThesis,
+  AuditEvent, ChatMessage, Citation, MonitorEvent, Order, OrderMode, Position, ResearchReport, TradeProposal, User, UserThesis,
 } from "@/lib/types";
 
 export type ProposalView = TradeProposal & { research?: ResearchReport; approvalUrl: string };
@@ -20,7 +20,7 @@ export interface PortfolioView {
   exposureExplanation: string;
   sharpe: number | null;
   history: { at: string; valueUsd: number }[];
-  mode: "sandbox" | "simulated";
+  mode: OrderMode;
   topicExposure: { topic: string; usd: number }[];
 }
 export interface DashState {
@@ -33,7 +33,7 @@ export interface DashState {
   monitorEvents: MonitorEvent[];
   audit: AuditEvent[];
   portfolio: PortfolioView;
-  modes: { llm: boolean; exchange: "sandbox" | "simulated"; research: "context.dev" | "mock"; imessage: boolean };
+  modes: { llm: boolean; exchange: "sandbox" | "simulated"; polymarket: "live" | "simulated" | "off"; hyperliquid: "testnet" | "live" | "simulated" | "off"; research: "context.dev" | "mock"; imessage: boolean };
 }
 
 export async function post<T = unknown>(url: string, body?: unknown): Promise<T> {

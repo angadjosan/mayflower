@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
+    "@nktkas/hyperliquid": "0.33.3",
     "@sentry/nextjs": "^11.6.0",
     "@supabase/supabase-js": "^2.117.3",
     "@trigger.dev/sdk": "^4.7.3",
