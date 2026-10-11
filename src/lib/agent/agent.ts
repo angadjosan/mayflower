@@ -16,6 +16,7 @@ import { remember, forget, memoryContext } from "../memory";
 import { revokeUploadToken, deleteLocalTexts } from "../ingest";
 import { pendingCheckins, markCheckinAnswered } from "../loops/newsCheckin";
 import type { Market, OnboardingState, ResearchReport, Side, TradeProposal, User } from "../types";
+import { notionInternal, notionInternalConnection, saveConnection, syncSource } from "../connectors";
 
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
 const EFFORT = (process.env.ANTHROPIC_AGENT_EFFORT || "low") as "low" | "medium" | "high";
@@ -372,6 +373,12 @@ async function runTool(userId: string, name: string, input: Input): Promise<unkn
 
     case "get_link": {
       const p = String(input.purpose);
+      // Shared-workspace Notion needs no sign-in: connect + sync right now.
+      if (p === "connect_notion" && notionInternal) {
+        const src = await saveConnection(userId, "notion", notionInternalConnection());
+        const r = await syncSource(src.id);
+        return { connected: true, noLinkNeeded: true, learned: r.theses ?? 0, note: "Notion is connected (shared workspace); tell the user it's done, no link." };
+      }
       const next = p === "connect_gemini" ? "/api/gemini-oauth/start" : p === "local_texts" ? "/api/ingest/token" : p.startsWith("connect_") ? `/api/connect/${p.slice(8)}/start` : undefined;
       return { url: await createLoginLink(userId, next), expiresInMinutes: 15 };
     }
