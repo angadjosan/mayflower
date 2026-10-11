@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "discord": "node scripts/discord-bot.mjs"
+    "discord": "node scripts/discord-bot.mjs",
+    "trigger:dev": "npx trigger.dev@latest dev"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",

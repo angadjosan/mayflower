@@ -57,3 +57,23 @@ Two modes are supported:
 - `gmail.readonly` is a **restricted scope**. While the app's publishing status is *Testing*, only listed test users can connect, with a limit of 100, and their refresh tokens expire after 7 days. Production use requires Google's verification plus an annual third-party security assessment (CASA), so plan on Testing mode for the MVP.
 - The auth request uses `access_type=offline&prompt=consent`, so it returns a refresh token. Access tokens are refreshed automatically when they expire, and the refreshed token is re-encrypted.
 - API: `users.messages.list?q=newer_than:14d -category:social&maxResults=20`, then `messages.get?format=metadata` (Subject and From headers). Only the **subject and snippet** are used; full message bodies are never fetched. Disconnecting calls Google's token revoke endpoint.
+
+## YZi receipts (`src/lib/receipts.ts`)
+- Env: `BNB_TESTNET_PRIVATE_KEY` (a throwaway testnet key funded from the BSC testnet faucet) and `BNB_TESTNET_RPC` (default `https://data-seed-prebsc-1-s1.bnbchain.org:8545`). The chain is BSC testnet, chainId 97, accessed via `viem`.
+- `commitReceipt({userId, kind, ref?, record})` builds canonical JSON (keys sorted recursively), takes its sha256, and stores an `AuditReceipt` (pending). With a key set, it sends a 0-value tx to self with `data = 0x + hex("mayflower:") + hash`, then marks the receipt `committed` (with `txHash`) or `failed`. Without a key, the status is `disabled`.
+- **Only the hash goes onchain.** The canonical record is kept offchain in the audit log (`receipt.record`), so `verifyReceipt(id)` can recompute the hash and, when a tx exists, compare it with the tx calldata.
+- Approval record: `{proposalId, version, userIdHash (HMAC), marketId, side, quantity, limitPrice, approvedAt}`. Policy record: the user's risk limits plus `"trade-only, no withdrawals"`.
+- `onApproved(proposalId)` is called after a proposal is approved. It's fire-and-forget safe and idempotent.
+- API: `GET /api/receipts` lists the user's receipts, `GET /api/receipts?verify=<id>` verifies one, and `POST /api/receipts {kind:"policy"}` commits the current policy. The UI is `src/components/Receipts.tsx`, which links each receipt to `https://testnet.bscscan.com/tx/<hash>`.
+- Verified: the RPC is reachable and an unfunded key returns `failed` ("exceeds the balance"). A funded commit hasn't been exercised.
+
+## Sentry
+- Env: `SENTRY_DSN` (server/edge), `NEXT_PUBLIC_SENTRY_DSN` (browser), plus `SENTRY_AUTH_TOKEN`, `SENTRY_ORG` and `SENTRY_PROJECT`, which are needed only for source-map upload.
+- Files: `sentry.server.config.ts`, `sentry.edge.config.ts`, `src/instrumentation.ts` (`register()` and `onRequestError`), and `src/instrumentation-client.ts`. Every `init` is skipped when no DSN is set.
+- `next.config.ts` is wrapped with `withSentryConfig` only when a DSN is set. Source maps upload only when `SENTRY_AUTH_TOKEN` is set.
+- Privacy: `dataCollection` turns off user info, cookies, headers, bodies, query params (approval tokens live there) and gen-AI inputs/outputs.
+
+## Trigger.dev
+- Env: `TRIGGER_SECRET_KEY` and `TRIGGER_PROJECT_REF` (used by `trigger.config.ts`). In the Trigger.dev dashboard env, also set `APP_URL` and `CRON_SECRET`.
+- `src/trigger/monitor.ts`: the scheduled task `mayflower-monitor` runs every 10 minutes and sends `POST ${APP_URL}/api/cron/monitor` with `Authorization: Bearer ${CRON_SECRET}`. The job logic stays in the app.
+- Dev: `npm run trigger:dev`. Deploy: `npx trigger.dev@latest deploy`. Untested against a real Trigger.dev project.
