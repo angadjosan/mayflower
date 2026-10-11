@@ -12,6 +12,8 @@ export async function withUser(fn: (user: User) => Promise<unknown>) {
     return res;
   } catch (e) {
     const err = e as Error & { code?: string };
-    return NextResponse.json({ error: err.message, code: err.code ?? "ERROR" }, { status: 400 });
+    const res = NextResponse.json({ error: err.message, code: err.code ?? "ERROR" }, { status: 400 });
+    if (setCookie) res.cookies.set(DEMO_COOKIE, setCookie, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 365 });
+    return res;
   }
 }

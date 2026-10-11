@@ -22,10 +22,11 @@ export interface Container {
   status: Record<string, { mode: string; detail: string }>;
 }
 
-let cached: Container | null = null;
+// Stored on globalThis so Next.js dev (one module graph per route) and HMR share one in-memory state.
+const g = globalThis as unknown as { __mayflowerContainer?: Container | null };
 
 export function getContainer(overrides: Partial<Container> = {}): Container {
-  if (cached && !Object.keys(overrides).length) return cached;
+  if (g.__mayflowerContainer && !Object.keys(overrides).length) return g.__mayflowerContainer;
   const googleKey = optionalEnv("GOOGLE_API_KEY") ?? optionalEnv("GEMINI_API_KEY");
   const llm: LLM = overrides.llm ?? (googleKey ? new GoogleLLM({ apiKey: googleKey }) : new MockLLM());
   const research = overrides.research ?? createResearchProvider();
@@ -45,8 +46,8 @@ export function getContainer(overrides: Partial<Container> = {}): Container {
       database: { mode: repo instanceof MemoryRepo ? "in-memory" : "supabase", detail: repo instanceof MemoryRepo ? "resets on restart" : "persistent" },
     },
   };
-  if (!Object.keys(overrides).length) cached = c;
+  if (!Object.keys(overrides).length) g.__mayflowerContainer = c;
   return c;
 }
 
-export function resetContainer() { cached = null; }
+export function resetContainer() { g.__mayflowerContainer = null; }
