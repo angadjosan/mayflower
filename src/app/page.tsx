@@ -1,103 +1,146 @@
-import Image from "next/image";
+"use client";
+import { useCallback, useEffect, useState } from "react";
+import type { ChatMessage, RiskLimits } from "@/lib/types";
+import { Chat } from "@/components/Chat";
+import { Footer } from "@/components/Footer";
+import { Header } from "@/components/Header";
+import { Performance } from "@/components/Performance";
+import { Positions } from "@/components/Positions";
+import { Profile } from "@/components/Profile";
+import { Recommendations } from "@/components/Recommendations";
+import { post, type DashState, type ProposalView } from "@/components/state";
 
-export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+export default function Dashboard() {
+  const [s, setS] = useState<DashState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [pendingMsg, setPendingMsg] = useState<ChatMessage | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/state", { cache: "no-store" });
+      if (!res.ok) throw new Error(`Could not load state (${res.status})`);
+      setS(await res.json());
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load state");
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  const run = async (fn: () => Promise<unknown>, ok?: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      if (ok) setNotice(ok);
+      await load();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const send = async (text: string) => {
+    setSending(true);
+    setPendingMsg({ id: "pending", userId: "", role: "user", text, channel: "web", createdAt: new Date().toISOString() });
+    try {
+      await post("/api/chat", { text });
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Chat failed");
+    } finally {
+      await load();
+      setPendingMsg(null);
+      setSending(false);
+    }
+  };
+
+  const discover = async (focus?: string) => {
+    setDiscovering(true);
+    try {
+      const r = await post<{ proposals?: unknown[] }>("/api/discover", focus ? { focus } : {});
+      setNotice(r.proposals?.length ? `Found ${r.proposals.length} idea(s).` : "No trades worth making right now.");
+      await load();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Discovery failed");
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  if (!s) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <div className="text-center">
+          <div className="text-lg font-semibold">Mayflower</div>
+          <p className="mt-1 text-sm text-stone-500">{error ? `${error}. Retrying…` : "Loading…"}</p>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+    );
+  }
+
+  const messages = pendingMsg ? [...s.messages, pendingMsg] : s.messages;
+
+  return (
+    <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <div className="min-w-0 space-y-6">
+          <Header s={s} busy={busy} onTogglePause={() => run(() => post("/api/settings", { paused: !s.user.paused }))} />
+
+          {(error || notice) && (
+            <div className="flex items-start justify-between gap-3 rounded-xl bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+              <span>{error ? `${error}. Showing last known data.` : notice}</span>
+              {notice && !error && (
+                <button onClick={() => setNotice(null)} className="text-amber-600 hover:text-amber-900" aria-label="Dismiss">×</button>
+              )}
+            </div>
+          )}
+
+          <Recommendations
+            proposals={s.proposals}
+            discovering={discovering}
+            onDiscover={discover}
+            onAsk={(p: ProposalView) => send(`Why ${p.market.title}?`)}
+            onReject={(p: ProposalView) =>
+              run(() => post(`/api/proposals/${p.id}/reject`, { token: p.approvalToken }), "Recommendation rejected.")
+            }
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+
+          <Positions positions={s.positions} events={s.monitorEvents} />
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <Performance p={s.portfolio} />
+            <Profile
+              user={s.user}
+              theses={s.theses}
+              busy={busy}
+              onSave={(body: { limits: Partial<RiskLimits>; name?: string; handle?: string }) => run(() => post("/api/settings", body), "Settings saved.")}
+              onLinkGemini={() => run(() => post("/api/link-gemini"), "Gemini sandbox linked (shared account).")}
+            />
+          </div>
+        </div>
+
+        <aside className="lg:sticky lg:top-6 lg:self-start">
+          <Chat messages={messages} onSend={send} sending={sending} />
+        </aside>
+      </div>
+
+      <div className="mt-8">
+        <Footer
+          audit={s.audit}
+          busy={busy}
+          onMonitor={() => run(() => post("/api/cron/monitor"), "Monitor ran.")}
+          onReset={() => run(() => post("/api/reset"), "Demo reset.")}
+        />
+      </div>
+    </main>
   );
 }
