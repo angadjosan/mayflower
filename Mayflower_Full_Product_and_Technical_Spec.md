@@ -180,17 +180,13 @@ The hackathon version should prove the core product works end to end, rather tha
 
 ### MVP Experience and Scope
 
-The **web dashboard is essential** and should remain extremely simple. A conversational experience is also essential. **iMessage is the intended consumer messaging channel**, but full iMessage delivery is not a prerequisite for demonstrating the core MVP: if needed, demonstrate the same conversation inside the web experience and treat actual iMessage delivery as the next integration.
+The **web dashboard is essential** and should remain extremely simple. **iMessage is the full-time home for conversation**, delivered through a BlueBubbles server. The web chat mirrors the same conversation as a fallback if the bridge goes down, but iMessage is the primary experience we build and demo.
 
 The MVP should demonstrate risk-aware sizing and explain why a trade is or isn't appropriate. Full portfolio hedging, advanced stop-loss workflows, rebalancing across many positions, and robust performance analytics belong to the broader product vision unless time permits.
 
 All hackathon execution uses **Gemini sandbox funds**. A simulated order should be clearly labeled as simulated; a proposed order should not be displayed as filled until its status is confirmed.
 
 ## Future Features — Not Required for the MVP
-
-### iMessage as the Full-Time Home
-
-The agent becomes an ongoing personal contact. Users receive selective research updates, ask spontaneous questions, approve proposed trades, and discuss their portfolio directly in their messages.
 
 ### Optional Personal Context Connectors
 
@@ -242,11 +238,13 @@ This section expands the product concept above into a specific implementation pl
 
 **Mayflower** is a consumer prediction-market copilot, not a business hedging platform. It uses both personal interests and general-market research to find opportunities. It explains each opportunity, recommends a position size, monitors risk, and asks permission before **every** order or portfolio-changing action.
 
-**Two user interfaces:** a very simple web dashboard showing positions, agent reasoning, risk sizing, and proposed trades; and actual iMessage for conversations and notifications when a viable bridge is connected. A web chat duplicates the conversational flow so the core demo is not blocked by iMessage.
+**Two user interfaces:** a very simple web dashboard showing positions, agent reasoning, risk sizing, and proposed trades; and actual iMessage (via BlueBubbles) as the full-time home for conversations and notifications. A web chat mirrors the conversation as a fallback only.
 
 **Core sponsor integrations:** Gemini Prediction Markets (trading) and Context.dev (research). **YZi Labs:** trusted-agent, user-controlled trading permissions and an optional BNB Chain testnet audit demonstration. **ElevenLabs:** final stretch feature only—users can call their agent. No AUSD, x402, Ripple, or always-on microphone.
 
 **Trading mode:** Gemini sandbox during the hackathon. No live-money promises, guaranteed returns, or unapproved execution.
+
+**Money:** Mayflower never holds user funds. Users fund their own Gemini account and link it to Mayflower with trade-only permissions (see §7).
 
 ## 2. Exact recommended stack
 
@@ -267,14 +265,15 @@ This section expands the product concept above into a specific implementation pl
 | Risk math | TypeScript risk module | Expected value, sizing, concentration, exit and hedge analysis |
 | Charts | Recharts | Minimal P&L and exposure visualizations |
 | Error tracking | Sentry | Failures and observability |
-| Messaging | Actual iMessage via validated Mac-hosted bridge | Messages and alerts, subject to integration feasibility |
+| Messaging | iMessage via BlueBubbles Server on a dedicated always-on Mac | Inbound messages via webhook, outbound via BlueBubbles REST API |
+| Exchange account linking | Gemini OAuth 2.0 (Trader role only) | Trade on the user's own Gemini account; no fund movement |
 | YZi demonstration | BNB Smart Chain Testnet + viem (optional) | Hash-based approval-policy/audit receipts; no customer data onchain |
 | Voice stretch | ElevenLabs conversational agent with phone integration | User calls Mayflower; same permissions as web |
 | Repo | Public GitHub | Hackathon submission |
 
 **Two separate Geminis:** Google Gemini is the LLM; Gemini Exchange is the prediction-market trading venue. Use separate API keys and clients.
 
-**Validation gates:** Verify Gemini sandbox market coverage and exact order capabilities; Context.dev access and rate limits; availability and reliability of the iMessage bridge; and ElevenLabs inbound phone calling before claiming any feature works. Do not assume AUSD deposits into Gemini are supported.
+**Validation gates:** Verify Gemini sandbox market coverage and exact order capabilities; Context.dev access and rate limits; BlueBubbles uptime and message delivery from the hosted Mac; whether Gemini OAuth works for prediction-market orders in sandbox, and which scopes it needs; and ElevenLabs inbound phone calling before claiming any feature works. Do not assume AUSD deposits into Gemini are supported.
 
 ## 3. Exact connectors and integration scope
 
@@ -284,8 +283,9 @@ This section expands the product concept above into a specific implementation pl
 | Context.dev | Current research, page retrieval, evidence citations, monitoring | P0, required |
 | Google Gemini | Structured reasoning, thesis generation, probability estimates, explanation | P0, required |
 | User-provided context | Interests, beliefs, budget, risk profile, excluded topics | P0, required |
-| Web chat | Questions, explanations, trade proposal review | P0, required |
-| iMessage | Alerts, natural-language discussion, secure links to approve proposals | P1, desired for hackathon |
+| iMessage (BlueBubbles) | Primary conversation, alerts, secure links to approve proposals | P0, required |
+| Gemini OAuth | Link the user's own Gemini account with trade-only permissions | P0, required (API-key fallback, see §7) |
+| Web chat | Fallback mirror of the iMessage conversation | P1, fallback |
 | Gmail/email | Opt-in newsletters, interests and event context | P2, future |
 | Notion | Opt-in notes and personal research | P2, future |
 | Slack | Opt-in relevant channels and messages | P2, future |
@@ -295,20 +295,20 @@ This section expands the product concept above into a specific implementation pl
 
 Personal-context connectors must be explicitly authorized and revocable. Raw private messages should not be displayed in public research results or submitted indiscriminately to outside services. Connected information is **context**, not permission to trade.
 
-**iMessage constraint:** Apple does not offer a general public cloud bot API for arbitrary iMessage accounts. Validate a Mac-hosted bridge before promising true iMessage; SMS is not the same thing. Sensitive approval should use a signed, expiring web confirmation bound to the exact order, rather than interpreting an ambiguous text such as “sure” as authorization.
+**iMessage via BlueBubbles:** Apple does not offer a public cloud bot API for iMessage, so Mayflower runs BlueBubbles Server on a dedicated, always-on Mac signed into Mayflower's own Apple ID. BlueBubbles forwards new messages to our API by webhook, and we reply through its REST API. Expose the server through a stable tunnel, authenticate webhook calls, and map each sender's phone number or Apple ID to a Mayflower user. The Mac is a single point of failure: monitor it and fall back to web chat if it goes down. SMS is not the same thing. Sensitive approval should use a signed, expiring web confirmation bound to the exact order, rather than interpreting an ambiguous text such as “sure” as authorization.
 
 ## 4. User journeys
 
 ### First-time user
 
-1. Open Mayflower and sign in.
+1. Text Mayflower in iMessage, or open the web app and sign in.
 2. Say: “I follow the Seahawks and AI, and I have $200 I can risk.”
 3. Set maximum loss per position, maximum total exposure, and topics to exclude.
 4. Mayflower stores an editable profile of interests, beliefs, and risk limits.
 5. Mayflower shows a personalized idea **and** a general-market idea, if real matching contracts exist.
 6. Select a recommendation to see the thesis, counterarguments, sources, probability estimate, current price, and suggested size.
-7. Ask “Why only $8?” in web chat or iMessage.
-8. Approve the exact proposal; Mayflower submits it to Gemini sandbox and shows the actual order status.
+7. Ask “Why only $8?” in iMessage.
+8. Approve the exact proposal. If no Gemini account is linked yet, Mayflower asks the user to link one now (see §7). Mayflower then submits the order to Gemini sandbox and shows the actual order status.
 9. The position appears in the dashboard with its rationale and risk.
 10. When evidence changes, Mayflower proposes an adjustment and asks for fresh approval.
 
@@ -356,7 +356,27 @@ Users do not need to understand the terminology; Mayflower should do the calcula
 
 **Security:** Keep exchange secrets server-side and encrypted, apply per-user access controls, require exact order confirmation, deduplicate submissions, log every agent action, and expose a pause/kill switch. Never present an order as filled until the exchange confirms the fill.
 
-## 7. Agent workflow
+## 7. Funding & accounts
+
+**Mayflower never touches user money.** There is no deposit into Mayflower, no pooled account, and no payments integration for trading funds.
+
+1. **Funding happens in Gemini.** The user funds their own Gemini account in the Gemini app (ACH, wire, or debit card, per Gemini's own flows). Mayflower does not build a deposit flow.
+2. **Linking uses Gemini OAuth.** The user taps "Connect Gemini" and grants read access to balances and positions plus the **Trader** role. Mayflower never requests the **Fund Manager** role, so it can place approved trades but cannot move or withdraw money.
+3. **Link at first trade, not at signup.** Onboarding starts in iMessage with interests, beliefs, and risk limits. Mayflower asks the user to link Gemini only when they approve their first trade. New users without a Gemini account are sent to sign up and then return.
+4. **"Budget" is a risk limit, not a deposit.** The user's "$200 I can risk" is stored as a Mayflower limit. The risk engine reads the real Gemini balance and keeps total exposure under both the limit and the available balance.
+5. **Profits and withdrawals stay in Gemini.** Mayflower displays P&L but never initiates a withdrawal.
+
+**Why not hold funds:** Prediction-market contracts are CFTC-regulated. Pooling customer money to trade on their behalf would look like operating a commodity pool or acting as a broker, and would add KYC, custody, refund, and tax obligations. Trade-only delegation is also the core of the YZi trust story: the agent can act, but it cannot move your money.
+
+**Hackathon setup (sandbox):**
+
+- **Plan A:** each demo user links a Gemini sandbox account via OAuth (the real flow).
+- **Plan B:** if OAuth is unavailable in sandbox, use one team sandbox API key stored server-side, track each user's allocation in a Supabase ledger, and label it **"Sandbox – shared account"** in the dashboard.
+- Gemini OAuth tokens are encrypted at rest and revocable; Mayflower stores no card or bank details.
+
+**Business model:** free during the hackathon; later, a Mayflower subscription billed through Stripe (for Mayflower itself, never for trading funds). No per-trade cut, which would raise the same regulatory issues as holding funds.
+
+## 8. Agent workflow
 
 ```text
 User interests + optional personal context
@@ -398,11 +418,12 @@ Suggested agent responsibilities:
 
 Do not let the LLM call order placement directly without the approval gate and deterministic checks.
 
-## 8. Data model
+## 9. Data model
 
 | Entity | Essential fields |
 |---|---|
-| User | id, authentication, settings |
+| User | id, authentication, iMessage handle (phone/Apple ID), settings, risk limits |
+| GeminiConnection | user, OAuth token (encrypted), granted scopes/roles, status, linked_at, revoked_at |
 | UserThesis | user, topic, belief, confidence, source, updated_at |
 | ConnectedSource | user, provider, scopes, status |
 | Market | Gemini market ID, event, settlement rules, expiry, status |
@@ -429,11 +450,12 @@ mayflower/
   docs/                     # Product, demo and setup notes
 ```
 
-## 9. MVP versus future roadmap
+## 10. MVP versus future roadmap
 
 ### P0 — Must work for the hackathon
 
-- Sign-in and conversational onboarding.
+- Conversational onboarding over iMessage (BlueBubbles).
+- Gemini account linking via OAuth (trade-only), with the shared-sandbox fallback.
 - Persistent user interests, beliefs, and risk budget.
 - Gemini sandbox contract discovery and current quotes.
 - Personalized **and** general-market opportunity discovery.
@@ -441,11 +463,11 @@ mayflower/
 - Probability estimates, counterarguments, and transparent risk sizing.
 - A working approval gate and **actual Gemini sandbox order submission**.
 - Order status and all positions in the simple dashboard.
-- Web chat and basic monitoring/recommendation updates.
+- iMessage alerts and basic monitoring/recommendation updates.
 
 ### P1 — Strong additions if P0 is stable
 
-- Actual iMessage bridge and notifications.
+- Web chat fallback mirroring the iMessage conversation.
 - Position-level stop/exit alerts and rebalance suggestions.
 - Basic portfolio correlation/hedge proposals.
 - More polished portfolio performance views.
@@ -463,7 +485,7 @@ mayflower/
 - Same backend research, risk policies, and approval process.
 - No always-on recording or unsolicited calls.
 
-## 10. Demo script (two minutes)
+## 11. Demo script (two minutes)
 
 **0–20 seconds:** User says they follow football and AI, have a $200 budget, and want conservative sizing. Profile appears.
 
@@ -477,9 +499,9 @@ mayflower/
 
 **110–120 seconds:** A new evidence update triggers a proposed adjustment, **not** an unauthorized trade.
 
-If actual iMessage is operational, conduct the conversation there; otherwise use web chat and explicitly label iMessage as pending.
+Run the conversation in iMessage. If the BlueBubbles Mac is down, switch to the web chat fallback and say so.
 
-## 11. Sponsor positioning
+## 12. Sponsor positioning
 
 **Gemini Prediction Markets — primary:** Genuine market discovery, contract research, live pricing, and approved sandbox order execution.
 
@@ -489,18 +511,19 @@ If actual iMessage is operational, conduct the conversation there; otherwise use
 
 **ElevenLabs — stretch:** Phone-call access to the same agent, only after the core workflow is stable.
 
-## 12. Acceptance criteria
+## 13. Acceptance criteria
 
 - A new user can onboard without knowing how to trade.
 - The app discovers real contracts rather than hardcoded demo markets.
 - At least one recommendation has verifiable external citations and opposing evidence.
 - The risk engine shows and enforces an actual user-defined maximum.
 - An unapproved order **cannot** be submitted.
+- Mayflower holds no user funds and its Gemini access cannot withdraw or transfer money.
 - An approved sandbox order is sent once and reconciled with Gemini's returned status.
 - The dashboard displays real stored positions and the logic behind them.
 - The agent can recommend no trade and can propose a position change without executing it.
 - Every feature is labeled honestly: live, sandbox, simulated, or not yet implemented.
 
-## 13. Final pitch
+## 14. Final pitch
 
 > **Mayflower is your personal AI hedge fund for prediction markets.** It learns what you care about, researches the world, discovers opportunities both inside and outside your interests, and recommends trades sized to your risk. Talk to it in iMessage, approve each trade yourself, and see every position, every reason, and every risk in a simple dashboard. It keeps watching after you buy—and never trades behind your back.
