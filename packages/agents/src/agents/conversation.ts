@@ -1,7 +1,7 @@
 import type { ClassifiedIntent as ClassifiedIntentT, ExtractedProfile as ExtractedProfileT } from "@mayflower/shared";
 import { ClassifiedIntent, ExtractedProfile } from "@mayflower/shared";
-import type { LLM } from "../llm/llm.js";
-import { INTENT_SYSTEM, PROFILE_EXTRACTION_SYSTEM, REPLY_SYSTEM } from "../prompts.js";
+import type { LLM } from "../llm/llm";
+import { INTENT_SYSTEM, PROFILE_EXTRACTION_SYSTEM, REPLY_SYSTEM } from "../prompts";
 
 export async function classifyIntent(llm: LLM, message: string, context: { pendingProposals: Array<{ id: string; short: string; stake: number; title: string }> }): Promise<ClassifiedIntentT> {
   return llm.structured<ClassifiedIntentT>({

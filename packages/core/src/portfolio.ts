@@ -1,8 +1,8 @@
 import type { Position, User } from "@mayflower/shared";
 import { impliedProbability } from "@mayflower/shared";
 import { findHedges, pnlSummary, sharpeRatio, summarizeExposure } from "@mayflower/risk";
-import type { Container } from "./container.js";
-import { userExchangeAuth } from "./proposals.js";
+import type { Container } from "./container";
+import { userExchangeAuth } from "./proposals";
 
 /** Refresh current prices / unrealized P&L for all open positions. */
 export async function refreshPositions(c: Container, user: User): Promise<Position[]> {

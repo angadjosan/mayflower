@@ -3,7 +3,7 @@ import { contentHash, newId, proposalBindingFields } from "@mayflower/shared";
 import { runDiscoveryPipeline, type Opportunity } from "@mayflower/agents";
 import { decryptSecret } from "@mayflower/db";
 import type { GeminiAuth } from "@mayflower/gemini-markets";
-import type { Container } from "./container.js";
+import type { Container } from "./container";
 
 export const PROPOSAL_TTL_MS = 6 * 60 * 60 * 1000;
 

@@ -9,7 +9,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { OutboundChannel } from "./channel.js";
+import type { OutboundChannel } from "./channel";
 
 export const BBHandle = z.object({ address: z.string(), service: z.string().optional() }).passthrough();
 export const BBChat = z.object({ guid: z.string(), style: z.number().optional(), chatIdentifier: z.string().optional() }).passthrough();

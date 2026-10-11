@@ -3,8 +3,8 @@ import type { Citation, Market, MarketQuote, Position, ResearchReport } from "@m
 import { MonitorRecommendation, impliedProbability } from "@mayflower/shared";
 import { evaluateExit } from "@mayflower/risk";
 import type { ResearchProvider } from "@mayflower/context";
-import type { LLM } from "../llm/llm.js";
-import { MONITOR_SYSTEM } from "../prompts.js";
+import type { LLM } from "../llm/llm";
+import { MONITOR_SYSTEM } from "../prompts";
 
 export const MonitorAssessment = z.object({
   recommendation: MonitorRecommendation,

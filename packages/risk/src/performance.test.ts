@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sharpeRatio } from "./performance.js";
+import { sharpeRatio } from "./performance";
 
 describe("sharpeRatio", () => {
   it("is N/A with insufficient history", () => {

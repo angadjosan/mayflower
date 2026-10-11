@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sizePosition, fullKelly } from "./sizing.js";
+import { sizePosition, fullKelly } from "./sizing";
 import { DEFAULT_RISK_LIMITS } from "@mayflower/shared";
 
 const limits = { ...DEFAULT_RISK_LIMITS, totalBudget: 200, maxPerPosition: 20, kellyFraction: 0.25, minEdge: 0.05 };

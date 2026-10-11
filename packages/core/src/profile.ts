@@ -1,7 +1,7 @@
 import type { RiskLimits, User, UserThesis } from "@mayflower/shared";
 import { DEFAULT_RISK_LIMITS, newId } from "@mayflower/shared";
 import { extractProfile } from "@mayflower/agents";
-import type { Container } from "./container.js";
+import type { Container } from "./container";
 
 /** Conversational onboarding / profile update: extract → persist → return a summary. */
 export async function applyProfileMessage(c: Container, user: User, message: string): Promise<{ summary: string; limits: RiskLimits; theses: UserThesis[] }> {

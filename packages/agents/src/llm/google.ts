@@ -6,7 +6,7 @@
  */
 import { GoogleGenAI } from "@google/genai";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import type { LLM, StructuredRequest } from "./llm.js";
+import type { LLM, StructuredRequest } from "./llm";
 
 export interface GoogleLLMOptions {
   apiKey: string;

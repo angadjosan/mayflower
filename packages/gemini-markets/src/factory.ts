@@ -1,7 +1,7 @@
 import { exchangeMode, optionalEnv } from "@mayflower/shared";
-import type { ExchangeClient } from "./exchange.js";
-import { GeminiRestExchange, type GeminiAuth } from "./gemini-rest.js";
-import { SimulatedExchange } from "./simulated.js";
+import type { ExchangeClient } from "./exchange";
+import { GeminiRestExchange, type GeminiAuth } from "./gemini-rest";
+import { SimulatedExchange } from "./simulated";
 
 let sim: SimulatedExchange | null = null;
 

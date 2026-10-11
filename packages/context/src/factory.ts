@@ -1,7 +1,7 @@
 import { optionalEnv } from "@mayflower/shared";
-import { ContextDevProvider } from "./contextdev.js";
-import { MockResearchProvider } from "./mock.js";
-import type { ResearchProvider } from "./provider.js";
+import { ContextDevProvider } from "./contextdev";
+import { MockResearchProvider } from "./mock";
+import type { ResearchProvider } from "./provider";
 
 /** Context.dev when a key is configured, otherwise the mock (and say so). */
 export function createResearchProvider(): ResearchProvider {

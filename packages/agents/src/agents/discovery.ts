@@ -1,8 +1,8 @@
 import type { DiscoveryRanking as DiscoveryRankingT, Market, RiskLimits, UserThesis } from "@mayflower/shared";
 import { DiscoveryRanking } from "@mayflower/shared";
 import type { ExchangeClient } from "@mayflower/gemini-markets";
-import type { LLM } from "../llm/llm.js";
-import { DISCOVERY_SYSTEM } from "../prompts.js";
+import type { LLM } from "../llm/llm";
+import { DISCOVERY_SYSTEM } from "../prompts";
 
 export interface DiscoveredMarket {
   market: Market;

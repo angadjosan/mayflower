@@ -6,7 +6,7 @@
  *  - Monitor: POST /v1/monitors, GET /v1/monitors/{id}/changes
  * Rate limiting is concurrency-based; 429 carries Retry-After. We retry once.
  */
-import type { Freshness, MonitorChange, MonitorSpec, PageContent, ResearchProvider, SearchHit, SearchOptions } from "./provider.js";
+import type { Freshness, MonitorChange, MonitorSpec, PageContent, ResearchProvider, SearchHit, SearchOptions } from "./provider";
 
 const FRESHNESS: Record<Freshness, string> = { day: "last_24_hours", week: "last_week", month: "last_month", year: "last_year" };
 

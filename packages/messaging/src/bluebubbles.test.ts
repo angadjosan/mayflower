@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { parseInboundText, dmChatGuid, splitMessage } from "./bluebubbles.js";
-import { signApprovalLink, verifyApprovalLink } from "./approval-links.js";
+import { parseInboundText, dmChatGuid, splitMessage } from "./bluebubbles";
+import { signApprovalLink, verifyApprovalLink } from "./approval-links";
 
 describe("parseInboundText", () => {
   const base = { type: "new-message", data: { guid: "g1", text: "hi", handle: { address: "+15551234567", service: "iMessage" }, isFromMe: false, itemType: 0, associatedMessageGuid: null, dateCreated: 1760200000000, chats: [{ guid: "iMessage;-;+15551234567", style: 45 }] } };

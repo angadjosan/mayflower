@@ -3,7 +3,7 @@
  * identity so each agent can be given a canned answer.
  */
 import type { ZodType } from "zod";
-import type { LLM, StructuredRequest } from "./llm.js";
+import type { LLM, StructuredRequest } from "./llm";
 
 export class MockLLM implements LLM {
   readonly name = "mock";

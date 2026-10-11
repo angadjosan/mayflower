@@ -5,7 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Approval, AuditEvent, ExchangeConnection, Market, MarketQuote, Message, MonitorEvent, Order, Position, ResearchReport, RiskLimits, TradeProposal, User, UserThesis } from "@mayflower/shared";
 import { DEFAULT_RISK_LIMITS, RiskLimits as RiskLimitsSchema } from "@mayflower/shared";
-import type { Repo } from "./repo.js";
+import type { Repo } from "./repo";
 
 type Row = Record<string, unknown>;
 const snake = (s: string) => s.replace(/[A-Z]/g, (m) => "_" + m.toLowerCase());

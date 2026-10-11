@@ -2,7 +2,7 @@
  * Deterministic mock provider for tests and offline development. Clearly
  * labelled so no mock evidence is ever mistaken for real research.
  */
-import type { MonitorChange, MonitorSpec, PageContent, ResearchProvider, SearchHit, SearchOptions } from "./provider.js";
+import type { MonitorChange, MonitorSpec, PageContent, ResearchProvider, SearchHit, SearchOptions } from "./provider";
 
 export class MockResearchProvider implements ResearchProvider {
   readonly name = "mock";

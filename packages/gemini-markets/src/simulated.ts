@@ -5,7 +5,7 @@
  */
 import type { Fill, Market, MarketQuote } from "@mayflower/shared";
 import { newId } from "@mayflower/shared";
-import { ExchangeError, type ExchangeBalance, type ExchangeClient, type ExchangeOrder, type ExchangePosition, type PlaceOrderRequest } from "./exchange.js";
+import { ExchangeError, type ExchangeBalance, type ExchangeClient, type ExchangeOrder, type ExchangePosition, type PlaceOrderRequest } from "./exchange";
 
 export interface SimulatedMarketSeed extends Market {
   yesBid: number;

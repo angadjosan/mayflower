@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ContextDevProvider } from "./contextdev.js";
+import { ContextDevProvider } from "./contextdev";
 
 const fakeFetch = (handler: (url: string, init: RequestInit) => unknown): typeof fetch =>
   (async (url: string | URL | Request, init?: RequestInit) => new Response(JSON.stringify(handler(String(url), init ?? {})), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;

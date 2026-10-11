@@ -2,9 +2,9 @@ import type { MonitorEvent, Position, TradeProposal, User } from "@mayflower/sha
 import { contentHash, newId, proposalBindingFields } from "@mayflower/shared";
 import { monitorPosition } from "@mayflower/agents";
 import { sizePosition } from "@mayflower/risk";
-import type { Container } from "./container.js";
-import { PROPOSAL_TTL_MS, userExchangeAuth } from "./proposals.js";
-import { refreshPositions } from "./portfolio.js";
+import type { Container } from "./container";
+import { PROPOSAL_TTL_MS, userExchangeAuth } from "./proposals";
+import { refreshPositions } from "./portfolio";
 
 /**
  * Monitor every open position for a user. Produces MonitorEvents and, for

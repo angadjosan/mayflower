@@ -1,8 +1,8 @@
 import type { ForecastOutput as ForecastOutputT, Market, MarketQuote } from "@mayflower/shared";
 import { ForecastOutput, impliedProbability } from "@mayflower/shared";
-import type { LLM } from "../llm/llm.js";
-import { FORECAST_SYSTEM } from "../prompts.js";
-import type { EvidenceBundle } from "./research.js";
+import type { LLM } from "../llm/llm";
+import { FORECAST_SYSTEM } from "../prompts";
+import type { EvidenceBundle } from "./research";
 
 /** Forecast agent: independent probability + reasoning, grounded in the evidence digest. */
 export async function forecast(llm: LLM, market: Market, quote: MarketQuote, evidence: EvidenceBundle): Promise<ForecastOutputT> {

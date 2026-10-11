@@ -9,8 +9,8 @@
 import type { Approval, Channel, Order, Position, TradeProposal } from "@mayflower/shared";
 import { contentHash, newId, proposalBindingFields } from "@mayflower/shared";
 import { ExchangeError, type ExchangeClient } from "@mayflower/gemini-markets";
-import type { Container } from "./container.js";
-import { userExchangeAuth } from "./proposals.js";
+import type { Container } from "./container";
+import { userExchangeAuth } from "./proposals";
 
 export class ApprovalError extends Error { constructor(message: string, public code: string) { super(message); } }
 

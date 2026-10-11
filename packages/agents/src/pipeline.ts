@@ -9,11 +9,11 @@ import { impliedProbability, newId } from "@mayflower/shared";
 import { sizePosition, themeExposure, positionAtRisk } from "@mayflower/risk";
 import type { ExchangeClient } from "@mayflower/gemini-markets";
 import type { ResearchProvider } from "@mayflower/context";
-import type { LLM } from "./llm/llm.js";
-import { discoverMarkets, type DiscoveredMarket } from "./agents/discovery.js";
-import { gatherEvidence } from "./agents/research.js";
-import { forecast } from "./agents/forecast.js";
-import { critique } from "./agents/critic.js";
+import type { LLM } from "./llm/llm";
+import { discoverMarkets, type DiscoveredMarket } from "./agents/discovery";
+import { gatherEvidence } from "./agents/research";
+import { forecast } from "./agents/forecast";
+import { critique } from "./agents/critic";
 
 export interface PipelineDeps {
   llm: LLM;

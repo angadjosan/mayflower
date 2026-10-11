@@ -1,3 +1,3 @@
-export * from "./domain.js";
-export * from "./ids.js";
-export * from "./env.js";
+export * from "./domain";
+export * from "./ids";
+export * from "./env";

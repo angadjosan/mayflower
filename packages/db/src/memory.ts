@@ -1,6 +1,6 @@
 import type { Approval, AuditEvent, ExchangeConnection, Market, MarketQuote, Message, MonitorEvent, Order, Position, ResearchReport, RiskLimits, TradeProposal, User, UserThesis } from "@mayflower/shared";
 import { DEFAULT_RISK_LIMITS, newId } from "@mayflower/shared";
-import type { Repo } from "./repo.js";
+import type { Repo } from "./repo";
 
 /** In-memory repo. Process-local; fine for tests and a zero-config demo. */
 export class MemoryRepo implements Repo {

@@ -18,7 +18,7 @@
  */
 import { createHmac } from "node:crypto";
 import type { ExecutionMode, Fill, Market, MarketQuote, OrderStatus } from "@mayflower/shared";
-import { ExchangeError, type ExchangeBalance, type ExchangeClient, type ExchangeOrder, type ExchangePosition, type PlaceOrderRequest } from "./exchange.js";
+import { ExchangeError, type ExchangeBalance, type ExchangeClient, type ExchangeOrder, type ExchangePosition, type PlaceOrderRequest } from "./exchange";
 
 export type GeminiAuth = { kind: "hmac"; apiKey: string; apiSecret: string } | { kind: "oauth"; accessToken: string };
 

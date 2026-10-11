@@ -7,12 +7,12 @@ import type { Channel, Message, TradeProposal, User } from "@mayflower/shared";
 import { newId, optionalEnv } from "@mayflower/shared";
 import { classifyIntent, composeReply } from "@mayflower/agents";
 import { signApprovalLink } from "@mayflower/messaging";
-import type { Container } from "./container.js";
-import { applyProfileMessage } from "./profile.js";
-import { discoverForUser, formatProposalForMessage, shortRef } from "./proposals.js";
-import { approveAndExecute, ApprovalError, recordDecision } from "./execution.js";
-import { portfolioSnapshot } from "./portfolio.js";
-import { monitorUser } from "./monitoring.js";
+import type { Container } from "./container";
+import { applyProfileMessage } from "./profile";
+import { discoverForUser, formatProposalForMessage, shortRef } from "./proposals";
+import { approveAndExecute, ApprovalError, recordDecision } from "./execution";
+import { portfolioSnapshot } from "./portfolio";
+import { monitorUser } from "./monitoring";
 
 export interface HandleResult { reply: string; actions: string[] }
 

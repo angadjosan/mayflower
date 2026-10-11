@@ -1,7 +1,7 @@
 import type { CriticOutput as CriticOutputT, ForecastOutput, Market } from "@mayflower/shared";
 import { CriticOutput } from "@mayflower/shared";
-import type { LLM } from "../llm/llm.js";
-import { CRITIC_SYSTEM } from "../prompts.js";
+import type { LLM } from "../llm/llm";
+import { CRITIC_SYSTEM } from "../prompts";
 
 /** Critic: challenges the forecast; can block or adjust. */
 export async function critique(llm: LLM, market: Market, fc: ForecastOutput, evidenceDigest: string): Promise<CriticOutputT> {

@@ -1,3 +1,3 @@
-export * from "./channel.js";
-export * from "./bluebubbles.js";
-export * from "./approval-links.js";
+export * from "./channel";
+export * from "./bluebubbles";
+export * from "./approval-links";

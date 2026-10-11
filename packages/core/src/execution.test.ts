@@ -5,8 +5,8 @@ import { MockResearchProvider } from "@mayflower/context";
 import { SimulatedExchange } from "@mayflower/gemini-markets";
 import { InMemoryChannel } from "@mayflower/messaging";
 import { contentHash, proposalBindingFields, type TradeProposal, type User } from "@mayflower/shared";
-import { getContainer, resetContainer, type Container } from "./container.js";
-import { approveAndExecute, executeApproved, recordDecision, ApprovalError } from "./execution.js";
+import { getContainer, resetContainer, type Container } from "./container";
+import { approveAndExecute, executeApproved, recordDecision, ApprovalError } from "./execution";
 
 const user: User = { id: "u1", riskLimits: { totalBudget: 200, maxPerPosition: 20, maxThemeConcentration: 0.4, kellyFraction: 0.25, minEdge: 0.05, excludedTopics: [], paused: false }, createdAt: new Date().toISOString() };
 

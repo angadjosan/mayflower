@@ -5,8 +5,8 @@ import { CriticOutput, DiscoveryRanking, ForecastOutput, type User } from "@mayf
 import { MockResearchProvider } from "@mayflower/context";
 import { SimulatedExchange } from "@mayflower/gemini-markets";
 import { InMemoryChannel } from "@mayflower/messaging";
-import { getContainer, resetContainer } from "./container.js";
-import { discoverForUser } from "./proposals.js";
+import { getContainer, resetContainer } from "./container";
+import { discoverForUser } from "./proposals";
 
 describe("discovery → proposal pipeline", () => {
   it("creates a sized proposal for a compelling market and a no-trade for a weak one", async () => {

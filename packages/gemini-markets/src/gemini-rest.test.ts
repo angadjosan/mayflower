@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { eventToMarkets, contractToQuote, mapOrder } from "./gemini-rest.js";
+import { eventToMarkets, contractToQuote, mapOrder } from "./gemini-rest";
 
 describe("gemini mapping", () => {
   const ev = { id: "1", title: "Will BTC close above 83k?", type: "binary" as const, category: "Crypto", ticker: "GEMI-BTC", status: "active", contracts: [{ id: "c", label: "Yes", ticker: "HI83000", instrumentSymbol: "GEMI-BTC-HI83000", marketState: "open" as const, status: "active", prices: { buy: { yes: "0.42", no: "0.60" }, sell: { yes: "0.40", no: "0.58" }, lastTradePrice: "0.41" } }] };
