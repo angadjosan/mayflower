@@ -8,6 +8,7 @@ import { PortfolioHero } from "@/components/PortfolioHero";
 import { Positions } from "@/components/Positions";
 import { Profile } from "@/components/Profile";
 import Receipts from "@/components/Receipts";
+import MemoryPanel from "@/components/MemoryPanel";
 import { DiscoverForm, Recommendations } from "@/components/Recommendations";
 import RiskPanel from "@/components/RiskPanel";
 import { post, type DashState, type ProposalView } from "@/components/state";
@@ -17,6 +18,7 @@ import { Icon } from "@/components/icons";
 import { Logo, SectionHead } from "@/components/ui";
 
 const TABS = [
+  { key: "memory", label: "Memory", icon: "sparkle" },
   { key: "risk", label: "Risk", icon: "shield" },
   { key: "profile", label: "Limits", icon: "user" },
   { key: "connections", label: "Apps", icon: "plug" },
@@ -149,7 +151,7 @@ export default function Dashboard() {
         </section>
 
         <section className="mt-12">
-          <div className="mb-4 grid grid-cols-5 gap-1 rounded-2xl bg-sunken p-1" role="tablist">
+          <div className="mb-4 grid grid-cols-6 gap-1 rounded-2xl bg-sunken p-1" role="tablist">
             {TABS.map((t) => (
               <button
                 key={t.key}
@@ -164,6 +166,7 @@ export default function Dashboard() {
             ))}
           </div>
           <div role="tabpanel" className="animate-fade" key={tab}>
+            {tab === "memory" && <MemoryPanel />}
             {tab === "risk" && <RiskPanel />}
             {tab === "profile" && (
               <Profile
