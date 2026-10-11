@@ -107,8 +107,8 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: "get_link",
-    description: "One-time, 15-minute sign-in link. 'dashboard' opens their dashboard; 'connect_gemini' links their own Gemini account via OAuth (trade-only scopes, Mayflower can never withdraw). Include the link verbatim.",
-    input_schema: { type: "object", properties: { purpose: { type: "string", enum: ["dashboard", "connect_gemini"] } }, required: ["purpose"] },
+    description: "One-time, 15-minute sign-in link. 'dashboard' opens their dashboard; 'connect_gemini' links their own Gemini account via OAuth (trade-only scopes, Mayflower can never withdraw). 'connect_notion' / 'connect_slack' / 'connect_gmail' let Mayflower read their notes/messages as context for ideas (optional, revocable, never trade instructions). Include the link verbatim.",
+    input_schema: { type: "object", properties: { purpose: { type: "string", enum: ["dashboard", "connect_gemini", "connect_notion", "connect_slack", "connect_gmail"] } }, required: ["purpose"] },
   },
   {
     name: "reject_proposal",
@@ -228,7 +228,8 @@ async function runTool(userId: string, name: string, input: Input): Promise<unkn
     }
 
     case "get_link": {
-      const next = input.purpose === "connect_gemini" ? "/api/gemini-oauth/start" : undefined;
+      const p = String(input.purpose);
+      const next = p === "connect_gemini" ? "/api/gemini-oauth/start" : p.startsWith("connect_") ? `/api/connect/${p.slice(8)}/start` : undefined;
       return { url: await createLoginLink(userId, next), expiresInMinutes: 15 };
     }
 
