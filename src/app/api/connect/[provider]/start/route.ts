@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/session";
 import { connectUrl, isContextProvider, notionInternal, notionInternalConnection, providers, saveConnection, syncSource } from "@/lib/connectors";
+import { appUrl } from "@/lib/appUrl";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request, { params }: { params: Promise<{ provider: string }> }) {
   const { provider } = await params;
-  const home = (q: string) => NextResponse.redirect(new URL(`/?${q}`, req.url));
+  const home = (q: string) => NextResponse.redirect(appUrl(`/?${q}`, req));
   if (!isContextProvider(provider)) return home("connect_error=unknown+provider");
   if (!providers[provider].configured) return home(`connect_error=${provider}+not+configured`);
   const userId = await sessionUserId();

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sessionUserId } from "@/lib/session";
 import { audit } from "@/lib/db";
 import { isContextProvider, providers, saveConnection, syncSource, verifyState } from "@/lib/connectors";
+import { appUrl } from "@/lib/appUrl";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request, { params }: { params: Promise<{ provider: string }> }) {
   const { provider } = await params;
   const url = new URL(req.url);
-  const home = (q: string) => NextResponse.redirect(new URL(`/?${q}`, req.url));
+  const home = (q: string) => NextResponse.redirect(appUrl(`/?${q}`, req));
   if (!isContextProvider(provider)) return home("connect_error=unknown+provider");
 
   const err = url.searchParams.get("error");

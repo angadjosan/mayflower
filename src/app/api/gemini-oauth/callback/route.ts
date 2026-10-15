@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { sessionUserId } from "@/lib/session";
 import { audit } from "@/lib/db";
 import { exchangeCode, geminiOAuthConfigured, saveGeminiToken, STATE_COOKIE, verifyState } from "@/lib/gemini-oauth";
+import { appUrl } from "@/lib/appUrl";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const home = (q: string) => {
-    const res = NextResponse.redirect(new URL(`/?${q}`, req.url));
+    const res = NextResponse.redirect(appUrl(`/?${q}`, req));
     res.cookies.set(STATE_COOKIE, "", { path: "/api/gemini-oauth", maxAge: 0 });
     return res;
   };
