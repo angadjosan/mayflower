@@ -5,6 +5,7 @@ import { storeMessage, sendToUser } from "@/lib/notify";
 import { handleMessage } from "@/lib/agent/chat";
 import { punchUp } from "@/lib/punchUp";
 import { isSelfHandle, loopReason } from "@/lib/loopGuard";
+import { optedIn } from "@/lib/optIn";
 import { handleGroupMessage } from "@/lib/agent/group";
 import { bbEnabled, downloadAttachment, isImageAttachment, isVoiceMemo, sendAttachment, type BBAttachment } from "@/lib/bluebubbles";
 import { prepareSharedImages, storedTextFor } from "@/lib/sharedImages";
@@ -72,6 +73,13 @@ export async function POST(req: Request) {
     console.log("[bluebubbles] ignored group message (ALLOW_GROUP_CHATS != 1)");
     return NextResponse.json({ ok: true, ignored: true });
   }
+  // On a personal Apple ID, the owner's friends and family must not get the bot: new senders opt in by name.
+  const optIn = await optedIn(address, typed);
+  if (!optIn) {
+    console.log("[bluebubbles] ignored sender who has not opted in (MAYFLOWER_OPT_IN_WORD)");
+    return NextResponse.json({ ok: true, ignored: true });
+  }
+  if (optIn === "word") await getOrCreateUser({ handle: address });
   // Research can take a while; acknowledge the webhook now and reply over iMessage when done.
   after(async () => {
     let text = typed;
