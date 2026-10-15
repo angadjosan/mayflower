@@ -79,7 +79,8 @@ function LoginForm() {
         )}
       </div>
 
-      <a href={smsHref()} className="mt-6 flex items-center justify-center gap-1.5 text-xs text-muted hover:text-fg">
+      {/* Prefilled: new senders opt in by starting their first text with "mayflower" (MAYFLOWER_OPT_IN_WORD). */}
+      <a href={smsHref("mayflower ")} className="mt-6 flex items-center justify-center gap-1.5 text-xs text-muted hover:text-fg">
         <MessageIcon className="h-3.5 w-3.5" /> New here? Text Mayflower
       </a>
     </div>
